@@ -150,9 +150,9 @@ func (t *Template) Execute(vars map[string]interface{}, writer io.Writer) error 
 		return NewError(ErrorTypeTemplate, "writer cannot be nil", nodes.Position{}, nil)
 	}
 
-    useTrim := !t.environment.ShouldKeepTrailingNewline()
-    var buffer bytes.Buffer
-    outWriter := &buffer
+	useTrim := !t.environment.ShouldKeepTrailingNewline()
+	var buffer bytes.Buffer
+	outWriter := &buffer
 
 	// Create context
 	ctx := NewContextWithEnvironment(t.environment, vars)
@@ -160,21 +160,21 @@ func (t *Template) Execute(vars map[string]interface{}, writer io.Writer) error 
 	ctx.current = t
 	ctx.writer = outWriter
 
-    if err := t.ExecuteWithContext(ctx); err != nil {
-        return err
-    }
+	if err := t.ExecuteWithContext(ctx); err != nil {
+		return err
+	}
 
-    output := buffer.String()
-    if useTrim {
-        switch {
-        case strings.HasSuffix(output, "\r\n"):
-            output = output[:len(output)-2]
-        case strings.HasSuffix(output, "\n"):
-            output = output[:len(output)-1]
-        }
-    }
-    _, err := writer.Write([]byte(output))
-    return err
+	output := buffer.String()
+	if useTrim {
+		switch {
+		case strings.HasSuffix(output, "\r\n"):
+			output = output[:len(output)-2]
+		case strings.HasSuffix(output, "\n"):
+			output = output[:len(output)-1]
+		}
+	}
+	_, err := writer.Write([]byte(output))
+	return err
 }
 
 // ExecuteWithContext renders the template using an existing context
