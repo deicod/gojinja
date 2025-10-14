@@ -716,9 +716,11 @@ func (env *Environment) NewTemplate(templateString string) (*Template, error) {
 
 // NewTemplateWithName creates a new template with the given name
 func (env *Environment) NewTemplateWithName(templateString, name string) (*Template, error) {
-	// For now, we'll need to import the parser to parse the template
-	// This will be implemented when we create the main API
-	return nil, fmt.Errorf("not implemented yet - use NewTemplateFromAST")
+	if name == "" {
+		name = "template"
+	}
+
+	return env.parseTemplateFromString(templateString, name)
 }
 
 // NewTemplateFromAST creates a template from an existing AST
@@ -851,8 +853,12 @@ func (env *Environment) GetMacroStats() map[string]int {
 
 // parseTemplateFromString parses a template from a string
 func (env *Environment) parseTemplateFromString(source, name string) (*Template, error) {
-	// Create parser environment
-	parserEnv := &parser.Environment{}
+	// Create parser environment using the environment configuration
+	parserEnv := &parser.Environment{
+		TrimBlocks:          env.trimBlocks,
+		LstripBlocks:        env.lstripBlocks,
+		KeepTrailingNewline: env.keepTrailingNewline,
+	}
 
 	// Parse the template
 	ast, err := parser.ParseTemplateWithEnv(parserEnv, source, name, name)
