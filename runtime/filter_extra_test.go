@@ -10,8 +10,8 @@ func TestFilesizeformatDecimal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execution error: %v", err)
 	}
-	if output != "2.9 KB" {
-		t.Fatalf("expected '2.9 KB', got %q", output)
+	if output != "3.0 kB" {
+		t.Fatalf("expected '3.0 kB', got %q", output)
 	}
 }
 
@@ -27,6 +27,56 @@ func TestFilesizeformatBinary(t *testing.T) {
 	}
 	if result != "2.0 KiB" {
 		t.Fatalf("expected '2.0 KiB', got %q", result)
+	}
+}
+
+func TestFilesizeformatKeywordArgument(t *testing.T) {
+	out, err := ExecuteToString("{{ 2048|filesizeformat(binary=true) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "2.0 KiB" {
+		t.Fatalf("expected keyword binary to enable KiB units, got %q", out)
+	}
+}
+
+func TestFilesizeformatNegative(t *testing.T) {
+	out, err := ExecuteToString("{{ -3000|filesizeformat }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "-3.0 kB" {
+		t.Fatalf("expected '-3.0 kB', got %q", out)
+	}
+}
+
+func TestFilesizeformatNegativeBinary(t *testing.T) {
+	out, err := ExecuteToString("{{ -2048|filesizeformat(true) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "-2.0 KiB" {
+		t.Fatalf("expected '-2.0 KiB', got %q", out)
+	}
+}
+
+func TestFilesizeformatBooleanInput(t *testing.T) {
+	out, err := ExecuteToString("{{ value|filesizeformat }}", map[string]interface{}{"value": true})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "1 Byte" {
+		t.Fatalf("expected '1 Byte' for true boolean, got %q", out)
+	}
+}
+
+func TestFilesizeformatInvalidValue(t *testing.T) {
+	_, err := ExecuteToString("{{ 'abc'|filesizeformat }}", nil)
+	if err == nil {
+		t.Fatal("expected execution error for invalid input")
+	}
+	if !strings.Contains(err.Error(), "could not convert string to float") {
+		t.Fatalf("unexpected error message: %v", err)
 	}
 }
 

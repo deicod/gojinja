@@ -1104,48 +1104,100 @@ func filterEscapeJS(ctx *Context, value interface{}, args ...interface{}) (inter
 }
 
 func filterFilesizeformat(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
-	size, ok := toFloat64(value)
+	kwargs, positional := extractKwargs(args)
+	args = positional
+
+	var (
+		size float64
+		ok   bool
+	)
+
+	switch v := value.(type) {
+	case nil:
+		return nil, fmt.Errorf("float() argument must be a string or a real number, not 'NoneType'")
+	case bool:
+		if v {
+			size = 1
+		} else {
+			size = 0
+		}
+		ok = true
+	default:
+		size, ok = toFloat64(value)
+	}
+
 	if !ok {
-		return value, nil
+		if str, isString := value.(string); isString {
+			return nil, fmt.Errorf("could not convert string to float: '%s'", str)
+		}
+		return nil, fmt.Errorf("float() argument must be a string or a real number, not '%T'", value)
 	}
 
 	binary := false
 	if len(args) > 0 {
-		switch v := args[0].(type) {
-		case bool:
-			binary = v
-		case string:
-			binary = strings.EqualFold(v, "true")
-		case int:
-			binary = v != 0
-		case int64:
-			binary = v != 0
+		binary = isTruthyValue(args[0])
+	}
+	if kwargs != nil {
+		if val, exists := kwargs["binary"]; exists {
+			binary = isTruthyValue(val)
 		}
 	}
 
-	units := []string{"Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
-	if binary {
-		units = []string{"Bytes", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"}
+	negative := size < 0
+	if negative {
+		size = math.Abs(size)
 	}
 
-	base := 1024.0
-	sign := ""
-	if size < 0 {
-		sign = "-"
-		size = -size
+	if size == 0 {
+		result := "0 Bytes"
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
+	}
+
+	if math.Abs(size-1.0) < 1e-9 {
+		result := "1 Byte"
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
+	}
+
+	base := 1000.0
+	units := []string{"kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
+	if binary {
+		base = 1024.0
+		units = []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"}
 	}
 
 	if size < base {
-		return fmt.Sprintf("%s%.0f %s", sign, math.Floor(size+0.5), units[0]), nil
+		count := int64(math.Floor(size))
+		result := fmt.Sprintf("%d Bytes", count)
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
 	}
 
-	i := 0
-	for size >= base && i < len(units)-1 {
+	size /= base
+	unitIndex := 0
+	for size >= base && unitIndex < len(units)-1 {
 		size /= base
-		i++
+		unitIndex++
+	}
+	if size >= base {
+		for size >= base {
+			size /= base
+		}
+		unitIndex = len(units) - 1
 	}
 
-	return fmt.Sprintf("%s%.1f %s", sign, size, units[i]), nil
+	result := fmt.Sprintf("%.1f %s", size, units[unitIndex])
+	if negative {
+		result = "-" + result
+	}
+	return result, nil
 }
 
 func filterFloatformat(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
@@ -2788,12 +2840,21 @@ func toFloat64(val interface{}) (float64, bool) {
 		return float64(v), true
 	case int64:
 		return float64(v), true
+	case bool:
+		if v {
+			return 1, true
+		}
+		return 0, true
 	case float64:
 		return v, true
 	case float32:
 		return float64(v), true
 	case string:
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f, true
+		}
+	case Markup:
+		if f, err := strconv.ParseFloat(string(v), 64); err == nil {
 			return f, true
 		}
 	}
