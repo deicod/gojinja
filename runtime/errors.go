@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/deicod/gojinja/nodes"
 )
@@ -11,17 +12,17 @@ import (
 type ErrorType string
 
 const (
-	ErrorTypeTemplate    ErrorType = "template_error"
-	ErrorTypeUndefined   ErrorType = "undefined_error"
-	ErrorTypeSyntax      ErrorType = "syntax_error"
-	ErrorTypeSecurity    ErrorType = "security_error"
-	ErrorTypeFilter      ErrorType = "filter_error"
-	ErrorTypeTest        ErrorType = "test_error"
-	ErrorTypeRange       ErrorType = "range_error"
-	ErrorTypeAssignment  ErrorType = "assignment_error"
-	ErrorTypeContext     ErrorType = "context_error"
-	ErrorTypeMacro       ErrorType = "macro_error"
-	ErrorTypeImport      ErrorType = "import_error"
+	ErrorTypeTemplate   ErrorType = "template_error"
+	ErrorTypeUndefined  ErrorType = "undefined_error"
+	ErrorTypeSyntax     ErrorType = "syntax_error"
+	ErrorTypeSecurity   ErrorType = "security_error"
+	ErrorTypeFilter     ErrorType = "filter_error"
+	ErrorTypeTest       ErrorType = "test_error"
+	ErrorTypeRange      ErrorType = "range_error"
+	ErrorTypeAssignment ErrorType = "assignment_error"
+	ErrorTypeContext    ErrorType = "context_error"
+	ErrorTypeMacro      ErrorType = "macro_error"
+	ErrorTypeImport     ErrorType = "import_error"
 )
 
 // Error represents a runtime error with position information
@@ -71,13 +72,48 @@ func NewErrorWithCause(errorType ErrorType, message string, position nodes.Posit
 }
 
 // WrapError wraps an existing error with position information
-func WrapError(err error, position nodes.Position, node nodes.Node) *Error {
-	return &Error{
-		Type:     ErrorTypeTemplate,
-		Message:  err.Error(),
-		Position: position,
-		Node:     node,
-		Cause:    err,
+func WrapError(err error, position nodes.Position, node nodes.Node) error {
+	if err == nil {
+		return nil
+	}
+
+	switch e := err.(type) {
+	case *Error:
+		if position.Line != 0 {
+			e.Position = position
+		}
+		if node != nil {
+			e.Node = node
+		}
+		return e
+	case *TemplateNotFoundError:
+		if base := e.runtimeError(); base != nil {
+			if position.Line != 0 {
+				base.Position = position
+			}
+			if node != nil {
+				base.Node = node
+			}
+		}
+		return e
+	case *TemplatesNotFoundError:
+		if base := e.runtimeError(); base != nil {
+			if position.Line != 0 {
+				base.Position = position
+			}
+			if node != nil {
+				base.Node = node
+			}
+		}
+		return e
+	default:
+		return &Error{
+			Type:     ErrorTypeTemplate,
+			Message:  err.Error(),
+			Position: position,
+			Node:     node,
+			Cause:    err,
+		}
 	}
 }
 
@@ -200,6 +236,103 @@ func IsUndefinedError(err error) bool {
 	}
 	_, ok := err.(*UndefinedError)
 	return ok
+}
+
+// TemplateNotFoundError represents an error when a single template cannot be located.
+type TemplateNotFoundError struct {
+	base  *Error
+	Name  string
+	Tried []string
+}
+
+// NewTemplateNotFound creates a TemplateNotFoundError with optional tried locations and cause.
+func NewTemplateNotFound(name string, tried []string, cause error) *TemplateNotFoundError {
+	message := fmt.Sprintf("template %s not found", name)
+	if len(tried) > 0 {
+		message = fmt.Sprintf("%s (tried: %s)", message, strings.Join(tried, ", "))
+	}
+
+	return &TemplateNotFoundError{
+		base:  NewErrorWithCause(ErrorTypeTemplate, message, nodes.Position{}, nil, cause),
+		Name:  name,
+		Tried: append([]string(nil), tried...),
+	}
+}
+
+// TemplatesNotFoundError represents an error when none of a set of templates can be located.
+type TemplatesNotFoundError struct {
+	base  *Error
+	Names []string
+	Tried []string
+}
+
+// NewTemplatesNotFound creates a TemplatesNotFoundError with optional tried locations and cause.
+func NewTemplatesNotFound(names []string, tried []string, cause error) *TemplatesNotFoundError {
+	message := "no templates found"
+	if len(names) > 0 {
+		message = fmt.Sprintf("no templates found among [%s]", strings.Join(names, ", "))
+	}
+	if len(tried) > 0 {
+		message = fmt.Sprintf("%s (tried: %s)", message, strings.Join(tried, ", "))
+	}
+
+	return &TemplatesNotFoundError{
+		base:  NewErrorWithCause(ErrorTypeTemplate, message, nodes.Position{}, nil, cause),
+		Names: append([]string(nil), names...),
+		Tried: append([]string(nil), tried...),
+	}
+}
+
+// Error returns the message for TemplateNotFoundError.
+func (e *TemplateNotFoundError) Error() string {
+	if e == nil {
+		return "template not found"
+	}
+	if e.base != nil {
+		return e.base.Error()
+	}
+	return fmt.Sprintf("template %s not found", e.Name)
+}
+
+// Error returns the message for TemplatesNotFoundError.
+func (e *TemplatesNotFoundError) Error() string {
+	if e == nil {
+		return "no templates found"
+	}
+	if e.base != nil {
+		return e.base.Error()
+	}
+	return "no templates found"
+}
+
+// Unwrap returns the underlying cause for TemplatesNotFoundError.
+func (e *TemplatesNotFoundError) Unwrap() error {
+	if e == nil || e.base == nil {
+		return nil
+	}
+	return e.base.Cause
+}
+
+// Unwrap returns the underlying cause for TemplateNotFoundError.
+func (e *TemplateNotFoundError) Unwrap() error {
+	if e == nil || e.base == nil {
+		return nil
+	}
+	return e.base.Cause
+}
+
+func (e *TemplateNotFoundError) runtimeError() *Error {
+	if e == nil {
+		return nil
+	}
+	return e.base
+}
+
+func (e *TemplatesNotFoundError) runtimeError() *Error {
+	if e == nil {
+		return nil
+	}
+	return e.base
 }
 
 // IsSecurityError checks if an error is a security error
