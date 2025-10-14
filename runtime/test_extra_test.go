@@ -462,6 +462,30 @@ func TestLineStatementRendering(t *testing.T) {
 	}
 }
 
+func TestLineStatementRenderingAfterText(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLineStatementPrefix("#")
+
+	tpl, err := env.ParseString(`Title
+# for v in values:
+- {{ v }}
+# endfor
+`, "line_stmt_after_text")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tpl.ExecuteToString(map[string]interface{}{"values": []int{0, 1, 2}})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+
+	expected := "Title\n- 0\n- 1\n- 2"
+	if result != expected {
+		t.Fatalf("expected %q, got %q", expected, result)
+	}
+}
+
 func TestLineCommentRendering(t *testing.T) {
 	env := NewEnvironment()
 	env.SetLineStatementPrefix("#")

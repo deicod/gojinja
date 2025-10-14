@@ -388,6 +388,51 @@ func (l *Lexer) tokeniter(source, name, filename string, initialState LexerState
 			}
 		}
 
+		if currentState == StateRoot {
+			boundary := findLineControlBoundary(
+				source[pos:],
+				l.config.Delimiters.LineStatement,
+				l.config.Delimiters.LineComment,
+				l.config.Delimiters.VariableStart,
+				l.config.Delimiters.BlockStart,
+				l.config.Delimiters.CommentStart,
+			)
+			if boundary > 0 {
+				rawSegment := source[pos : pos+boundary]
+				outputSegment := rawSegment
+				if suppressNextNewline && strings.HasSuffix(rawSegment, "\n") {
+					outputSegment = strings.TrimSuffix(rawSegment, "\n")
+					suppressNextNewline = false
+				} else if suppressNextNewline {
+					suppressNextNewline = false
+				}
+
+				if outputSegment != "" {
+					tokens = append(tokens, TokenInfo{
+						Line:   lineno,
+						Column: column,
+						Type:   "data",
+						Value:  outputSegment,
+					})
+				}
+
+				newlines := strings.Count(rawSegment, "\n")
+				lineno += newlines
+				if newlines > 0 {
+					lastNewlinePos := strings.LastIndex(rawSegment, "\n")
+					column = utf8.RuneCountInString(rawSegment[lastNewlinePos+1:]) + 1
+				} else {
+					column += utf8.RuneCountInString(rawSegment)
+				}
+
+				pos += boundary
+				lineStarting = true
+				matched = true
+				iterations++
+				continue
+			}
+		}
+
 		// Emit standalone newlines to preserve output and reset line state
 		if currentState == StateRoot && strings.HasPrefix(source[pos:], "\n") {
 			prevLine := lineno
@@ -1059,6 +1104,67 @@ func matchLinePrefix(src, prefix string) (int, bool) {
 		return idx, true
 	}
 	return 0, false
+}
+
+func findLineControlBoundary(src, linePrefix, commentPrefix, variableStart, blockStart, commentStart string) int {
+	if linePrefix == "" && commentPrefix == "" {
+		return 0
+	}
+
+	offset := 0
+	for {
+		idx := strings.Index(src[offset:], "\n")
+		if idx < 0 {
+			return 0
+		}
+
+		newlinePos := offset + idx
+		nextPos := newlinePos + 1
+		remainder := src[nextPos:]
+		segment := src[:nextPos]
+		segmentContent := segment
+		if strings.HasSuffix(segmentContent, "\n") {
+			segmentContent = segmentContent[:len(segmentContent)-1]
+		}
+
+		if linePrefix != "" {
+			if _, ok := matchLinePrefix(remainder, linePrefix); ok {
+				if !containsTemplateDelimiter(segmentContent, variableStart, blockStart, commentStart) {
+					return nextPos
+				}
+			}
+		}
+
+		if commentPrefix != "" {
+			if _, ok := matchLinePrefix(remainder, commentPrefix); ok {
+				if !containsTemplateDelimiter(segmentContent, variableStart, blockStart, commentStart) {
+					return nextPos
+				}
+			}
+		}
+
+		offset = nextPos
+		if offset >= len(src) {
+			return 0
+		}
+	}
+}
+
+func containsTemplateDelimiter(segment, variableStart, blockStart, commentStart string) bool {
+	if segment == "" {
+		return false
+	}
+
+	if variableStart != "" && strings.Contains(segment, variableStart) {
+		return true
+	}
+	if blockStart != "" && strings.Contains(segment, blockStart) {
+		return true
+	}
+	if commentStart != "" && strings.Contains(segment, commentStart) {
+		return true
+	}
+	return false
 }
 
 func (l *Lexer) normalizeNewlines(value string) string {

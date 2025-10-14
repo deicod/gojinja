@@ -330,6 +330,34 @@ func TestParserLineStatements(t *testing.T) {
 	}
 }
 
+func TestParserLineStatementsAfterText(t *testing.T) {
+	env := &Environment{LineStatementPrefix: "#"}
+
+	template := "Title\n# for item in [1, 2]:\n- {{ item }}\n# endfor\n"
+
+	parser, err := NewParser(env, template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 2 {
+		t.Fatalf("expected 2 top-level nodes, got %d", len(tmpl.Body))
+	}
+
+	if _, ok := tmpl.Body[0].(*nodes.Output); !ok {
+		t.Fatalf("expected first node to be Output, got %T", tmpl.Body[0])
+	}
+
+	if _, ok := tmpl.Body[1].(*nodes.For); !ok {
+		t.Fatalf("expected second node to be For, got %T", tmpl.Body[1])
+	}
+}
+
 func TestParserLineComments(t *testing.T) {
 	env := &Environment{
 		LineStatementPrefix: "#",
