@@ -18,7 +18,7 @@
 1. **Undefined Behaviour**
    - Support additional undefined policies (e.g. ChainableUndefined, silent undefined toggles) and integrate with filters/tests behaviour.
 2. **Namespace & Macro Enhancements**
-   - Introduce `namespace()` global and namespace declaration tag; align macro argument validation and caller semantics.
+   - Align macro argument validation and caller semantics (namespace helpers now include the declaration tag via `parser/statements.go` and runtime support).
    - Improve macro registry caching and cross-template namespace reuse.
 3. **Extensions & Globals**
    - Expose extension registration API so custom filters/tests/globals integrate cleanly.

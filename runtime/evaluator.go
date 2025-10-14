@@ -189,6 +189,8 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitBreak(n)
 	case *nodes.Scope:
 		return e.visitScope(n)
+	case *nodes.Namespace:
+		return e.visitNamespace(n)
 
 	// Expression nodes
 	case *nodes.Name:
@@ -1020,6 +1022,92 @@ func (e *Evaluator) visitScope(node *nodes.Scope) interface{} {
 	return nil
 }
 
+func (e *Evaluator) visitNamespace(node *nodes.Namespace) interface{} {
+	var initial interface{}
+	if node.Value != nil {
+		initial = e.Evaluate(node.Value)
+		if err, ok := initial.(error); ok {
+			return err
+		}
+	}
+
+	namespace, err := ensureNamespaceObject(node.Name, initial, node)
+	if err != nil {
+		return err
+	}
+
+	oldValue, oldExists := e.ctx.Get(node.Name)
+	restore := func() {
+		if oldExists {
+			e.ctx.Set(node.Name, oldValue)
+		} else {
+			e.ctx.Delete(node.Name)
+		}
+	}
+
+	e.ctx.Set(node.Name, namespace)
+
+	e.ctx.PushScope()
+	namespaceScope := e.ctx.scope
+
+	var control interface{}
+	var controlIsError bool
+	for _, stmt := range node.Body {
+		if result := e.Evaluate(stmt); result != nil {
+			if err, ok := result.(error); ok {
+				control = err
+				controlIsError = true
+				break
+			}
+			if signal, ok := isControlSignal(result); ok {
+				control = signal
+				break
+			}
+		}
+	}
+
+	e.ctx.PopScope()
+
+	if control != nil {
+		if controlIsError {
+			restore()
+			return control
+		}
+		return control
+	}
+
+	for name, value := range namespaceScope.vars {
+		if name == node.Name {
+			continue
+		}
+		namespace.Set(name, value)
+	}
+
+	e.ctx.Set(node.Name, namespace)
+	return nil
+}
+
+func ensureNamespaceObject(name string, value interface{}, node *nodes.Namespace) (*Namespace, error) {
+	if value == nil {
+		return NewNamespace(nil), nil
+	}
+
+	if _, ok := value.(undefinedType); ok {
+		return NewNamespace(nil), nil
+	}
+
+	if ns, ok := value.(*Namespace); ok {
+		return ns, nil
+	}
+
+	if mapping, ok := toStringInterfaceMap(value); ok {
+		return NewNamespace(mapping), nil
+	}
+
+	message := fmt.Sprintf("namespace '%s' expects a namespace or mapping, got %T", name, value)
+	return nil, NewError(ErrorTypeTemplate, message, node.GetPosition(), node)
+}
+
 // Expression node visitors
 
 func (e *Evaluator) visitName(node *nodes.Name) interface{} {
@@ -1691,6 +1779,25 @@ func (e *Evaluator) assignTarget(target nodes.Expr, value interface{}, pos nodes
 			return err
 		}
 		return assignIndexValue(container, idx, value, pos, target)
+	case *nodes.NSRef:
+		namespaceValue, exists := e.ctx.Get(t.Name)
+		if !exists {
+			return NewAssignmentError(target.String(), fmt.Sprintf("namespace '%s' is undefined", t.Name), pos, target)
+		}
+
+		if setter, ok := namespaceValue.(interface {
+			Set(string, interface{}) interface{}
+		}); ok {
+			setter.Set(t.Attr, value)
+			return nil
+		}
+
+		if ns, ok := namespaceValue.(*Namespace); ok {
+			ns.Set(t.Attr, value)
+			return nil
+		}
+
+		return NewAssignmentError(target.String(), fmt.Sprintf("'%s' is not a namespace", t.Name), pos, target)
 	default:
 		return NewAssignmentError(target.String(), "invalid assignment target", pos, target)
 	}
@@ -2323,6 +2430,13 @@ func cloneFilterChain(filter *nodes.Filter, base nodes.Expr) *nodes.Filter {
 func assignAttributeValue(container interface{}, attr string, value interface{}, pos nodes.Position, node nodes.Node) error {
 	if container == nil {
 		return NewAssignmentError(node.String(), "cannot assign attribute on nil", pos, node)
+	}
+
+	if setter, ok := container.(interface {
+		Set(string, interface{}) interface{}
+	}); ok {
+		setter.Set(attr, value)
+		return nil
 	}
 
 	val := reflect.ValueOf(container)

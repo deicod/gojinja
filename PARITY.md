@@ -8,7 +8,7 @@
 - Comment/whitespace control: lexer honors dash/plus trimming syntax and environment flags `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline` (`lexer/lexer.go:682`, `runtime/environment.go:76`)
 - Raw/verbatim blocks (including whitespace-controlled variants) are preserved as literal template data in both parser and runtime
 - Inheritance flow matches block resolution and `super()` support (`runtime/template.go:64`)
-- Missing/partial tags: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`), `{% spaceless %}`, namespace declaration tag, line statements (`#` prefix), async constructs (`async for/with`), and extension hook registration
+- Missing/partial tags: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`), `{% spaceless %}`, line statements (`#` prefix), async constructs (`async for/with`), and extension hook registration
 
 ## Expression & Assignment Support
 
