@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -41,6 +42,7 @@ func (env *Environment) registerBuiltinFilters() {
 	env.AddFilter("reverse", filterReverse)
 	env.AddFilter("center", filterCenter)
 	env.AddFilter("indent", filterIndent)
+	env.AddFilter("wordwrap", filterWordwrap)
 
 	// Number filters
 	env.AddFilter("round", filterRound)
@@ -375,6 +377,84 @@ func filterIndent(ctx *Context, value interface{}, args ...interface{}) (interfa
 	}
 
 	return strings.Join(lines, "\n"), nil
+}
+
+func filterWordwrap(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+	text := toString(value)
+	kwargs, args := extractKwargs(args)
+
+	width := 79
+	breakLongWords := true
+	wrapString := ""
+	wrapProvided := false
+	breakOnHyphens := true
+
+	if len(args) > 0 {
+		if w, ok := toInt(args[0]); ok {
+			width = w
+		}
+	}
+	if len(args) > 1 {
+		breakLongWords = isTruthyValue(args[1])
+	}
+	if len(args) > 2 {
+		wrapString = toString(args[2])
+		wrapProvided = true
+	}
+	if len(args) > 3 {
+		breakOnHyphens = isTruthyValue(args[3])
+	}
+
+	if kwargs != nil {
+		if val, ok := kwargs["width"]; ok {
+			if w, ok := toInt(val); ok {
+				width = w
+			}
+		}
+		if val, ok := kwargs["break_long_words"]; ok {
+			breakLongWords = isTruthyValue(val)
+		}
+		if val, ok := kwargs["wrapstring"]; ok {
+			wrapString = toString(val)
+			wrapProvided = true
+		}
+		if val, ok := kwargs["break_on_hyphens"]; ok {
+			breakOnHyphens = isTruthyValue(val)
+		}
+	}
+
+	if width <= 0 {
+		return nil, fmt.Errorf("wordwrap filter requires width > 0")
+	}
+
+	if !wrapProvided {
+		if ctx != nil && ctx.environment != nil {
+			wrapString = ctx.environment.NewlineSequence()
+		}
+		if wrapString == "" {
+			wrapString = "\n"
+		}
+	}
+
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	lines := strings.Split(normalized, "\n")
+	if len(lines) > 0 && strings.HasSuffix(normalized, "\n") {
+		lines = lines[:len(lines)-1]
+	}
+
+	if len(lines) == 0 {
+		return "", nil
+	}
+
+	wrapped := make([]string, 0, len(lines))
+	for _, line := range lines {
+		segments := wrapParagraph(line, width, breakLongWords, breakOnHyphens)
+		wrapped = append(wrapped, strings.Join(segments, wrapString))
+	}
+
+	return strings.Join(wrapped, wrapString), nil
 }
 
 // Number filters
@@ -2213,6 +2293,199 @@ func splitPreserveWhitespace(s string) []string {
 	}
 
 	return tokens
+}
+
+func wrapParagraph(line string, width int, breakLongWords, breakOnHyphens bool) []string {
+	if strings.TrimSpace(line) == "" {
+		return []string{""}
+	}
+
+	chunks := splitChunks(line, breakOnHyphens)
+	if len(chunks) == 0 {
+		return []string{""}
+	}
+
+	// normalise whitespace chunks to single spaces and remove leading/trailing spaces
+	normalised := make([]string, 0, len(chunks))
+	for _, chunk := range chunks {
+		if chunk == "" {
+			continue
+		}
+		if strings.TrimSpace(chunk) == "" {
+			normalised = append(normalised, " ")
+		} else {
+			normalised = append(normalised, chunk)
+		}
+	}
+
+	for len(normalised) > 0 && normalised[0] == " " {
+		normalised = normalised[1:]
+	}
+	for len(normalised) > 0 && normalised[len(normalised)-1] == " " {
+		normalised = normalised[:len(normalised)-1]
+	}
+
+	if len(normalised) == 0 {
+		return []string{""}
+	}
+
+	reverseStrings(normalised)
+
+	var lines []string
+
+	for len(normalised) > 0 {
+		// drop leading spaces when continuing paragraphs
+		if len(lines) > 0 {
+			for len(normalised) > 0 && normalised[len(normalised)-1] == " " {
+				normalised = normalised[:len(normalised)-1]
+			}
+			if len(normalised) == 0 {
+				break
+			}
+		}
+
+		curLine := make([]string, 0)
+		curLen := 0
+
+		for len(normalised) > 0 {
+			chunk := normalised[len(normalised)-1]
+			chunkLen := utf8.RuneCountInString(chunk)
+
+			if curLen+chunkLen <= width {
+				curLine = append(curLine, chunk)
+				curLen += chunkLen
+				normalised = normalised[:len(normalised)-1]
+			} else {
+				break
+			}
+		}
+
+		if len(normalised) > 0 {
+			nextChunk := normalised[len(normalised)-1]
+			if utf8.RuneCountInString(nextChunk) > width {
+				handleLongWord(&normalised, &curLine, &curLen, width, breakLongWords, breakOnHyphens)
+			}
+		}
+
+		for len(curLine) > 0 && curLine[len(curLine)-1] == " " {
+			curLen -= 1
+			curLine = curLine[:len(curLine)-1]
+		}
+
+		if len(curLine) > 0 {
+			lines = append(lines, strings.Join(curLine, ""))
+		} else {
+			break
+		}
+	}
+
+	if len(lines) == 0 {
+		return []string{""}
+	}
+
+	return lines
+}
+
+func splitChunks(text string, breakOnHyphens bool) []string {
+	tokens := splitPreserveWhitespace(text)
+	chunks := make([]string, 0, len(tokens))
+
+	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
+		if isWhitespace(token) {
+			chunks = append(chunks, token)
+			continue
+		}
+
+		if !breakOnHyphens {
+			chunks = append(chunks, token)
+			continue
+		}
+
+		runes := []rune(token)
+		start := 0
+		for i, r := range runes {
+			if r == '-' {
+				chunks = append(chunks, string(runes[start:i+1]))
+				start = i + 1
+			}
+		}
+		if start < len(runes) {
+			chunks = append(chunks, string(runes[start:]))
+		}
+	}
+
+	return chunks
+}
+
+func handleLongWord(chunks *[]string, curLine *[]string, curLen *int, width int, breakLongWords, breakOnHyphens bool) {
+	if width < 1 {
+		width = 1
+	}
+
+	spaceLeft := width - *curLen
+	if spaceLeft < 1 {
+		spaceLeft = 1
+	}
+
+	stack := *chunks
+	if len(stack) == 0 {
+		return
+	}
+
+	chunk := stack[len(stack)-1]
+	chunkRunes := []rune(chunk)
+
+	if breakLongWords {
+		end := spaceLeft
+		if end > len(chunkRunes) {
+			end = len(chunkRunes)
+		}
+
+		if breakOnHyphens && len(chunkRunes) > spaceLeft {
+			hyphen := -1
+			for i := 0; i < spaceLeft && i < len(chunkRunes); i++ {
+				if chunkRunes[i] == '-' {
+					hyphen = i
+				}
+			}
+			if hyphen > 0 {
+				for j := 0; j < hyphen; j++ {
+					if chunkRunes[j] != '-' {
+						end = hyphen + 1
+						break
+					}
+				}
+			}
+		}
+
+		splitPart := string(chunkRunes[:end])
+		remainder := string(chunkRunes[end:])
+
+		*curLine = append(*curLine, splitPart)
+		*curLen += utf8.RuneCountInString(splitPart)
+
+		if remainder == "" {
+			*chunks = stack[:len(stack)-1]
+		} else {
+			stack[len(stack)-1] = remainder
+		}
+		return
+	}
+
+	if len(*curLine) == 0 {
+		*curLine = append(*curLine, chunk)
+		*curLen += utf8.RuneCountInString(chunk)
+		*chunks = stack[:len(stack)-1]
+	}
+}
+
+func reverseStrings(values []string) {
+	for i, j := 0, len(values)-1; i < j; i, j = i+1, j-1 {
+		values[i], values[j] = values[j], values[i]
+	}
 }
 
 func isWhitespace(token string) bool {
