@@ -1047,16 +1047,40 @@ func (e *Evaluator) visitNamespace(node *nodes.Namespace) interface{} {
 
 	e.ctx.Set(node.Name, namespace)
 
+	e.ctx.PushScope()
+	namespaceScope := e.ctx.scope
+
+	var control interface{}
+	var controlIsError bool
 	for _, stmt := range node.Body {
 		if result := e.Evaluate(stmt); result != nil {
 			if err, ok := result.(error); ok {
-				restore()
-				return err
+				control = err
+				controlIsError = true
+				break
 			}
 			if signal, ok := isControlSignal(result); ok {
-				return signal
+				control = signal
+				break
 			}
 		}
+	}
+
+	e.ctx.PopScope()
+
+	if control != nil {
+		if controlIsError {
+			restore()
+			return control
+		}
+		return control
+	}
+
+	for name, value := range namespaceScope.vars {
+		if name == node.Name {
+			continue
+		}
+		namespace.Set(name, value)
 	}
 
 	e.ctx.Set(node.Name, namespace)

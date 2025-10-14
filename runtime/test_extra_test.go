@@ -251,6 +251,44 @@ func TestNamespaceStatementRejectsInvalidInitializer(t *testing.T) {
 	}
 }
 
+func TestNamespaceStatementIsolatesAssignments(t *testing.T) {
+	tpl := `{% namespace ns %}{% set foo = 42 %}{% endnamespace %}{{ ns.foo }}`
+	res, err := ExecuteToString(tpl, nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if strings.TrimSpace(res) != "42" {
+		t.Fatalf("expected namespace attribute to be set, got %q", res)
+	}
+
+	res, err = ExecuteToString(`{% namespace ns %}{% set foo = 42 %}{% endnamespace %}{% if foo is defined %}leak{% else %}isolated{% endif %}`, nil)
+	if err != nil {
+		t.Fatalf("execution error when checking isolation: %v", err)
+	}
+	if strings.TrimSpace(res) != "isolated" {
+		t.Fatalf("expected assignment to remain isolated, got %q", res)
+	}
+}
+
+func TestNamespaceStatementIsolatesMacros(t *testing.T) {
+	tpl := `{% namespace ns %}{% macro greet(name) %}hi {{ name }}{% endmacro %}{% endnamespace %}{{ ns.greet('World') }}`
+	res, err := ExecuteToString(tpl, nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if strings.TrimSpace(res) != "hi World" {
+		t.Fatalf("expected namespace macro to be callable via namespace, got %q", res)
+	}
+
+	res, err = ExecuteToString(`{% namespace ns %}{% macro greet(name) %}hi {{ name }}{% endmacro %}{% endnamespace %}{% if greet is defined %}leak{% else %}isolated{% endif %}`, nil)
+	if err != nil {
+		t.Fatalf("execution error when checking macro isolation: %v", err)
+	}
+	if strings.TrimSpace(res) != "isolated" {
+		t.Fatalf("expected macro to remain isolated, got %q", res)
+	}
+}
+
 func TestDictGlobalKeywords(t *testing.T) {
 	res, err := ExecuteToString("{{ dict(foo='bar', baz=2).foo }}", nil)
 	if err != nil {
