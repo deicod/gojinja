@@ -287,7 +287,10 @@ func (l *Lexer) Tokenize(source, name, filename string, initialState LexerState)
 		return nil, err
 	}
 
-	wrappedTokens := l.wrap(tokens, name, filename)
+	wrappedTokens, err := l.wrap(tokens, name, filename)
+	if err != nil {
+		return nil, err
+	}
 	return NewTokenStream(wrappedTokens), nil
 }
 
@@ -937,7 +940,7 @@ func (l *Lexer) handleLStrip(groups []string, tokenTypes []string, subexpNames [
 }
 
 // wrap converts raw token info into processed tokens
-func (l *Lexer) wrap(tokenInfos []TokenInfo, name, filename string) []Token {
+func (l *Lexer) wrap(tokenInfos []TokenInfo, name, filename string) ([]Token, error) {
 	var tokens []Token
 
 	for _, info := range tokenInfos {
@@ -989,7 +992,11 @@ func (l *Lexer) wrap(tokenInfos []TokenInfo, name, filename string) []Token {
 			default:
 				token.Type = TokenName
 				if !isValidIdentifier(info.Value) {
-					continue // TODO: Return error instead
+					return nil, &LexerError{
+						Message: fmt.Sprintf("invalid identifier %q", info.Value),
+						Line:    info.Line,
+						Column:  info.Column,
+					}
 				}
 			}
 		case "string":
@@ -1021,7 +1028,7 @@ func (l *Lexer) wrap(tokenInfos []TokenInfo, name, filename string) []Token {
 		tokens = append(tokens, token)
 	}
 
-	return tokens
+	return tokens, nil
 }
 
 // Helper functions

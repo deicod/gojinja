@@ -1,7 +1,9 @@
 package lexer
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -234,6 +236,34 @@ line 4`
 		if pos.line != 3 {
 			t.Errorf("Expected block start at line 3, got line %d", pos.line)
 		}
+	}
+}
+
+func TestWrapInvalidIdentifierProducesError(t *testing.T) {
+	lexer := NewLexer(DefaultLexerConfig())
+
+	_, err := lexer.wrap([]TokenInfo{{
+		Line:   3,
+		Column: 7,
+		Type:   "name",
+		Value:  "1invalid",
+	}}, "test", "test.html")
+
+	if err == nil {
+		t.Fatal("expected error for invalid identifier")
+	}
+
+	var lexErr *LexerError
+	if !errors.As(err, &lexErr) {
+		t.Fatalf("expected LexerError, got %T", err)
+	}
+
+	if !strings.Contains(lexErr.Message, "invalid identifier") {
+		t.Fatalf("unexpected error message: %q", lexErr.Message)
+	}
+
+	if lexErr.Line != 3 || lexErr.Column != 7 {
+		t.Fatalf("unexpected error location: line %d column %d", lexErr.Line, lexErr.Column)
 	}
 }
 
