@@ -60,7 +60,7 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", NewTemplateNotFound(name, []string{fullPath}, err)
 		}
-		return "", NewTemplateNotFound(name, []string{fullPath}, err)
+		return "", err
 	}
 	return string(data), nil
 }
