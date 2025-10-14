@@ -86,3 +86,74 @@ func TestEnvironmentAutoescapeStringAliases(t *testing.T) {
 		t.Fatal("expected default behaviour for string value 'default'")
 	}
 }
+
+func TestEnvironmentAutoescapeGenericSlice(t *testing.T) {
+	env := NewEnvironment()
+
+	env.SetAutoescape([]interface{}{" html ", "XML", ".JINJA"})
+
+	if !env.shouldAutoescape("page.HTML") {
+		t.Fatalf("expected autoescape for html extension from generic slice")
+	}
+	if !env.shouldAutoescape("feed.xml") {
+		t.Fatalf("expected autoescape for xml extension from generic slice")
+	}
+	if !env.shouldAutoescape("snippet.jinja") {
+		t.Fatalf("expected autoescape for jinja extension from generic slice")
+	}
+	if env.shouldAutoescape("notes.txt") {
+		t.Fatalf("did not expect txt extension to autoescape")
+	}
+}
+
+func TestEnvironmentAutoescapeNilResetsToDefault(t *testing.T) {
+	env := NewEnvironment()
+
+	env.SetAutoescape(false)
+	if env.shouldAutoescape("index.html") {
+		t.Fatalf("expected html to be false after forcing autoescape off")
+	}
+
+	env.SetAutoescape(nil)
+	if !env.shouldAutoescape("index.html") {
+		t.Fatalf("expected html to autoescape after resetting to default")
+	}
+	if env.shouldAutoescape("plain.txt") {
+		t.Fatalf("expected txt to remain disabled after resetting to default")
+	}
+}
+
+func TestSelectAutoescape(t *testing.T) {
+	selector := SelectAutoescape([]string{"html", ".xml"}, []string{"txt"}, true, false)
+
+	if !selector("index.HTML") {
+		t.Fatalf("expected selector to enable autoescape for html files")
+	}
+	if !selector("feed.xml") {
+		t.Fatalf("expected selector to enable autoescape for xml files")
+	}
+	if selector("notes.txt") {
+		t.Fatalf("expected selector to disable autoescape for txt files")
+	}
+	if selector("snippet.jinja") {
+		t.Fatalf("expected selector to return default false for unmatched extensions")
+	}
+	if !selector("") {
+		t.Fatalf("expected selector to use defaultForString when no name is provided")
+	}
+}
+
+func TestSelectAutoescapeIntegration(t *testing.T) {
+	env := NewEnvironment()
+	env.SetAutoescape(SelectAutoescape([]string{"html"}, []string{"txt"}, false, false))
+
+	if !env.shouldAutoescape("index.html") {
+		t.Fatalf("expected environment to autoescape html via selector")
+	}
+	if env.shouldAutoescape("notes.txt") {
+		t.Fatalf("expected environment selector to disable txt autoescape")
+	}
+	if env.shouldAutoescape("about.md") {
+		t.Fatalf("expected environment selector to use default false for unmatched extensions")
+	}
+}
