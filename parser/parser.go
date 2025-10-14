@@ -49,6 +49,8 @@ type Environment struct {
 	TrimBlocks          bool
 	LstripBlocks        bool
 	KeepTrailingNewline bool
+	LineStatementPrefix string
+	LineCommentPrefix   string
 }
 
 // Parser represents the central parsing class Jinja uses
@@ -71,6 +73,8 @@ func NewParser(env *Environment, source, name, filename string, state string) (*
 		lexerConfig.TrimBlocks = env.TrimBlocks
 		lexerConfig.LstripBlocks = env.LstripBlocks
 		lexerConfig.KeepTrailingNewline = env.KeepTrailingNewline
+		lexerConfig.Delimiters.LineStatement = env.LineStatementPrefix
+		lexerConfig.Delimiters.LineComment = env.LineCommentPrefix
 	}
 	l := lexer.NewLexer(lexerConfig)
 

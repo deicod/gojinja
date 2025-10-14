@@ -183,7 +183,7 @@ func (l *Lexer) buildRules() {
 	l.rules[StateLineComment] = []*Rule{
 		{
 			Regex:    c("(.*?)()"),
-			Tokens:   []string{"data", "comment_end"},
+			Tokens:   []string{"linecomment", "linecomment_end"},
 			NewState: strPtr("#pop"),
 		},
 	}
@@ -246,16 +246,7 @@ func (l *Lexer) buildRootParts() string {
 	}
 
 	// Line statement pattern
-	if l.config.Delimiters.LineStatement != "" {
-		lineStmt := "^[ \\t\\v]*" + e(l.config.Delimiters.LineStatement)
-		parts = append(parts, lineStmt)
-	}
-
-	// Line comment pattern
-	if l.config.Delimiters.LineComment != "" {
-		lineComment := e(l.config.Delimiters.LineComment)
-		parts = append(parts, lineComment)
-	}
+	// Line statements/comments handled explicitly in tokeniter to preserve newline semantics
 
 	return strings.Join(parts, "|")
 }
@@ -333,6 +324,7 @@ func (l *Lexer) tokeniter(source, name, filename string, initialState LexerState
 
 	// Track if we're at the start of a line for lstrip_blocks
 	lineStarting := true
+	suppressNextNewline := false
 
 	var tokens []TokenInfo
 
@@ -342,6 +334,127 @@ func (l *Lexer) tokeniter(source, name, filename string, initialState LexerState
 
 	for pos < sourceLen && iterations < maxIterations {
 		matched := false
+
+		// Handle line statements/comments explicitly when at line start
+		currentState := stack[len(stack)-1]
+		if currentState == StateRoot && lineStarting {
+			if wsLen, ok := matchLinePrefix(source[pos:], l.config.Delimiters.LineStatement); ok {
+				prefix := l.config.Delimiters.LineStatement
+				whitespaceRunes := utf8.RuneCountInString(source[pos : pos+wsLen])
+				tokenCol := column + whitespaceRunes
+				tokens = append(tokens, TokenInfo{
+					Line:   lineno,
+					Column: tokenCol,
+					Type:   "block_begin",
+					Value:  prefix,
+				})
+
+				advance := wsLen + len(prefix)
+				pos += advance
+				column += whitespaceRunes + utf8.RuneCountInString(prefix)
+				stack = append(stack, StateLineStatement)
+				statetokens = l.rules[stack[len(stack)-1]]
+				lineStarting = false
+				matched = true
+				iterations++
+				continue
+			}
+
+			if wsLen, ok := matchLinePrefix(source[pos:], l.config.Delimiters.LineComment); ok {
+				prefix := l.config.Delimiters.LineComment
+				commentStart := pos + wsLen + len(prefix)
+				commentLen := 0
+				if commentStart < len(source) {
+					if idx := strings.Index(source[commentStart:], "\n"); idx >= 0 {
+						commentLen = idx
+					} else {
+						commentLen = len(source) - commentStart
+					}
+				}
+
+				consumed := wsLen + len(prefix) + commentLen
+				column += utf8.RuneCountInString(source[pos : pos+consumed])
+				pos += consumed
+				lineStarting = false
+				if pos < len(source) && source[pos] == '\n' {
+					pos++
+					lineno++
+					column = 1
+					lineStarting = true
+				}
+				matched = true
+				iterations++
+				continue
+			}
+		}
+
+		if currentState == StateRoot {
+			boundary := findLineControlBoundary(
+				source[pos:],
+				l.config.Delimiters.LineStatement,
+				l.config.Delimiters.LineComment,
+				l.config.Delimiters.VariableStart,
+				l.config.Delimiters.BlockStart,
+				l.config.Delimiters.CommentStart,
+			)
+			if boundary > 0 {
+				rawSegment := source[pos : pos+boundary]
+				outputSegment := rawSegment
+				if suppressNextNewline && strings.HasSuffix(rawSegment, "\n") {
+					outputSegment = strings.TrimSuffix(rawSegment, "\n")
+					suppressNextNewline = false
+				} else if suppressNextNewline {
+					suppressNextNewline = false
+				}
+
+				if outputSegment != "" {
+					tokens = append(tokens, TokenInfo{
+						Line:   lineno,
+						Column: column,
+						Type:   "data",
+						Value:  outputSegment,
+					})
+				}
+
+				newlines := strings.Count(rawSegment, "\n")
+				lineno += newlines
+				if newlines > 0 {
+					lastNewlinePos := strings.LastIndex(rawSegment, "\n")
+					column = utf8.RuneCountInString(rawSegment[lastNewlinePos+1:]) + 1
+				} else {
+					column += utf8.RuneCountInString(rawSegment)
+				}
+
+				pos += boundary
+				lineStarting = true
+				matched = true
+				iterations++
+				continue
+			}
+		}
+
+		// Emit standalone newlines to preserve output and reset line state
+		if currentState == StateRoot && strings.HasPrefix(source[pos:], "\n") {
+			prevLine := lineno
+			prevColumn := column
+			pos++
+			lineno++
+			column = 1
+			if suppressNextNewline {
+				suppressNextNewline = false
+			} else {
+				tokens = append(tokens, TokenInfo{
+					Line:   prevLine,
+					Column: prevColumn,
+					Type:   "data",
+					Value:  "\n",
+				})
+			}
+			lineStarting = true
+			matched = true
+			iterations++
+			continue
+		}
 
 		// Try each rule for the current state
 		for _, rule := range statetokens {
@@ -417,6 +530,14 @@ func (l *Lexer) tokeniter(source, name, filename string, initialState LexerState
 
 			// Add generated tokens
 			tokens = append(tokens, newTokens...)
+			if l.config.TrimBlocks && currentState == StateBlockBegin {
+				for _, tok := range newTokens {
+					if tok.Type == "block_end" {
+						suppressNextNewline = true
+						break
+					}
+				}
+			}
 			if rule.NewState == nil || *rule.NewState != "#bygroup" {
 				pos = matchEnd
 			}
@@ -460,7 +581,36 @@ func (l *Lexer) tokeniter(source, name, filename string, initialState LexerState
 		}
 	}
 
-	// Check if we ended in a non-root state (missing end tag)
+	// Gracefully close unterminated line statements/comments at EOF
+	for len(stack) > 1 {
+		currentState := stack[len(stack)-1]
+		switch currentState {
+		case StateLineStatement:
+			tokens = append(tokens, TokenInfo{
+				Line:   lineno,
+				Column: column,
+				Type:   "block_end",
+				Value:  "",
+			})
+			stack = stack[:len(stack)-1]
+		case StateLineComment:
+			tokens = append(tokens, TokenInfo{
+				Line:   lineno,
+				Column: column,
+				Type:   "comment_end",
+				Value:  "",
+			})
+			stack = stack[:len(stack)-1]
+		default:
+			// For other states we break to report a proper error below
+			stack = stack[:len(stack)-1]
+			// Push back to allow error message to reference this state
+			stack = append(stack, currentState)
+			goto validateRemaining
+		}
+	}
+
+validateRemaining:
 	if len(stack) > 1 {
 		currentState := stack[len(stack)-1]
 		var expectedTag string
@@ -933,6 +1083,88 @@ func (l *Lexer) shouldIgnoreToken(tokenType string) bool {
 		"linecomment_end":   true,
 	}
 	return ignored[tokenType]
+}
+
+func matchLinePrefix(src, prefix string) (int, bool) {
+	if prefix == "" {
+		return 0, false
+	}
+
+	idx := 0
+	for idx < len(src) {
+		r, size := utf8.DecodeRuneInString(src[idx:])
+		if r == ' ' || r == '\t' || r == '\v' {
+			idx += size
+			continue
+		}
+		break
+	}
+
+	if strings.HasPrefix(src[idx:], prefix) {
+		return idx, true
+	}
+	return 0, false
+}
+
+func findLineControlBoundary(src, linePrefix, commentPrefix, variableStart, blockStart, commentStart string) int {
+	if linePrefix == "" && commentPrefix == "" {
+		return 0
+	}
+
+	offset := 0
+	for {
+		idx := strings.Index(src[offset:], "\n")
+		if idx < 0 {
+			return 0
+		}
+
+		newlinePos := offset + idx
+		nextPos := newlinePos + 1
+		remainder := src[nextPos:]
+		segment := src[:nextPos]
+		segmentContent := segment
+		if strings.HasSuffix(segmentContent, "\n") {
+			segmentContent = segmentContent[:len(segmentContent)-1]
+		}
+
+		if linePrefix != "" {
+			if _, ok := matchLinePrefix(remainder, linePrefix); ok {
+				if !containsTemplateDelimiter(segmentContent, variableStart, blockStart, commentStart) {
+					return nextPos
+				}
+			}
+		}
+
+		if commentPrefix != "" {
+			if _, ok := matchLinePrefix(remainder, commentPrefix); ok {
+				if !containsTemplateDelimiter(segmentContent, variableStart, blockStart, commentStart) {
+					return nextPos
+				}
+			}
+		}
+
+		offset = nextPos
+		if offset >= len(src) {
+			return 0
+		}
+	}
+}
+
+func containsTemplateDelimiter(segment, variableStart, blockStart, commentStart string) bool {
+	if segment == "" {
+		return false
+	}
+
+	if variableStart != "" && strings.Contains(segment, variableStart) {
+		return true
+	}
+	if blockStart != "" && strings.Contains(segment, blockStart) {
+		return true
+	}
+	if commentStart != "" && strings.Contains(segment, commentStart) {
+		return true
+	}
+	return false
 }
 
 func (l *Lexer) normalizeNewlines(value string) string {

@@ -297,6 +297,101 @@ func TestParser_BasicStatements(t *testing.T) {
 	}
 }
 
+func TestParserLineStatements(t *testing.T) {
+	env := &Environment{LineStatementPrefix: "#"}
+
+	template := "# for item in [1, 2]:\n- {{ item }}\n# endfor\n"
+
+	parser, err := NewParser(env, template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected 1 top-level node, got %d", len(tmpl.Body))
+	}
+
+	forStmt, ok := tmpl.Body[0].(*nodes.For)
+	if !ok {
+		t.Fatalf("expected first node to be For, got %T", tmpl.Body[0])
+	}
+
+	if len(forStmt.Body) == 0 {
+		t.Fatalf("expected loop body to contain nodes")
+	}
+
+	if _, ok := forStmt.Body[0].(*nodes.Output); !ok {
+		t.Fatalf("expected loop body to start with Output node, got %T", forStmt.Body[0])
+	}
+}
+
+func TestParserLineStatementsAfterText(t *testing.T) {
+	env := &Environment{LineStatementPrefix: "#"}
+
+	template := "Title\n# for item in [1, 2]:\n- {{ item }}\n# endfor\n"
+
+	parser, err := NewParser(env, template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 2 {
+		t.Fatalf("expected 2 top-level nodes, got %d", len(tmpl.Body))
+	}
+
+	if _, ok := tmpl.Body[0].(*nodes.Output); !ok {
+		t.Fatalf("expected first node to be Output, got %T", tmpl.Body[0])
+	}
+
+	if _, ok := tmpl.Body[1].(*nodes.For); !ok {
+		t.Fatalf("expected second node to be For, got %T", tmpl.Body[1])
+	}
+}
+
+func TestParserLineComments(t *testing.T) {
+	env := &Environment{
+		LineStatementPrefix: "#",
+		LineCommentPrefix:   "//",
+	}
+
+	parser, err := NewParser(env, "// comment line\n{{ 42 }}\n", "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected 1 node after stripping line comment, got %d", len(tmpl.Body))
+	}
+
+	output, ok := tmpl.Body[0].(*nodes.Output)
+	if !ok {
+		t.Fatalf("expected Output node, got %T", tmpl.Body[0])
+	}
+
+	if len(output.Nodes) != 1 {
+		t.Fatalf("expected single expression in output, got %d", len(output.Nodes))
+	}
+
+	if constNode, ok := output.Nodes[0].(*nodes.Const); !ok || constNode.Value != int64(42) {
+		t.Fatalf("expected constant 42, got %#v", output.Nodes[0])
+	}
+}
+
 func TestParser_RawBlock(t *testing.T) {
 	env := &Environment{}
 	template := `{% raw %}{{ value }}{% endraw %}`
