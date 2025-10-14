@@ -1143,16 +1143,25 @@ func filterFilesizeformat(ctx *Context, value interface{}, args ...interface{}) 
 		}
 	}
 
-	if size < 0 {
-		return fmt.Sprintf("%d Bytes", int64(size)), nil
+	negative := size < 0
+	if negative {
+		size = math.Abs(size)
 	}
 
 	if size == 0 {
-		return "0 Bytes", nil
+		result := "0 Bytes"
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
 	}
 
 	if math.Abs(size-1.0) < 1e-9 {
-		return "1 Byte", nil
+		result := "1 Byte"
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
 	}
 
 	base := 1000.0
@@ -1164,7 +1173,11 @@ func filterFilesizeformat(ctx *Context, value interface{}, args ...interface{}) 
 
 	if size < base {
 		count := int64(math.Floor(size))
-		return fmt.Sprintf("%d Bytes", count), nil
+		result := fmt.Sprintf("%d Bytes", count)
+		if negative {
+			result = "-" + result
+		}
+		return result, nil
 	}
 
 	size /= base
@@ -1180,7 +1193,11 @@ func filterFilesizeformat(ctx *Context, value interface{}, args ...interface{}) 
 		unitIndex = len(units) - 1
 	}
 
-	return fmt.Sprintf("%.1f %s", size, units[unitIndex]), nil
+	result := fmt.Sprintf("%.1f %s", size, units[unitIndex])
+	if negative {
+		result = "-" + result
+	}
+	return result, nil
 }
 
 func filterFloatformat(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {

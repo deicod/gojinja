@@ -45,8 +45,18 @@ func TestFilesizeformatNegative(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execution error: %v", err)
 	}
-	if out != "-3000 Bytes" {
-		t.Fatalf("expected '-3000 Bytes', got %q", out)
+	if out != "-3.0 kB" {
+		t.Fatalf("expected '-3.0 kB', got %q", out)
+	}
+}
+
+func TestFilesizeformatNegativeBinary(t *testing.T) {
+	out, err := ExecuteToString("{{ -2048|filesizeformat(true) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "-2.0 KiB" {
+		t.Fatalf("expected '-2.0 KiB', got %q", out)
 	}
 }
 
