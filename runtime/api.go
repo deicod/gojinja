@@ -276,7 +276,7 @@ func (br *BatchRenderer) AddTemplateFromAST(name string, ast *nodes.Template) er
 func (br *BatchRenderer) Render(name string, context map[string]interface{}) (string, error) {
 	template, ok := br.templates[name]
 	if !ok {
-		return "", NewError(ErrorTypeTemplate, "template not found: "+name, nodes.Position{}, nil)
+		return "", NewTemplateNotFound(name, []string{name}, nil)
 	}
 	return template.ExecuteToString(context)
 }
@@ -285,7 +285,7 @@ func (br *BatchRenderer) Render(name string, context map[string]interface{}) (st
 func (br *BatchRenderer) RenderToWriter(name string, context map[string]interface{}, writer io.Writer) error {
 	template, ok := br.templates[name]
 	if !ok {
-		return NewError(ErrorTypeTemplate, "template not found: "+name, nodes.Position{}, nil)
+		return NewTemplateNotFound(name, []string{name}, nil)
 	}
 	return template.Execute(context, writer)
 }

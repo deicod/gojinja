@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -530,6 +531,9 @@ func (e *Evaluator) visitInclude(node *nodes.Include) interface{} {
 	}
 
 	if lastErr != nil {
+		if len(templateNames) > 1 {
+			return NewTemplatesNotFound(templateNames, templateNames, lastErr)
+		}
 		return lastErr
 	}
 
@@ -591,11 +595,17 @@ func isTemplateNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if templErr, ok := err.(*Error); ok {
-		if templErr.Cause != nil {
-			err = templErr.Cause
-		}
+
+	var notFound *TemplateNotFoundError
+	if errors.As(err, &notFound) {
+		return true
 	}
+
+	var multiNotFound *TemplatesNotFoundError
+	if errors.As(err, &multiNotFound) {
+		return true
+	}
+
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
 }
 

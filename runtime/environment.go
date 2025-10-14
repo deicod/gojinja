@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -56,7 +57,10 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 	fullPath := filepath.Join(l.basePath, name)
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to load template %s: %w", name, err)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", NewTemplateNotFound(name, []string{fullPath}, err)
+		}
+		return "", err
 	}
 	return string(data), nil
 }
@@ -81,7 +85,7 @@ func (l *MapLoader) Load(name string) (string, error) {
 
 	template, ok := l.templates[name]
 	if !ok {
-		return "", fmt.Errorf("template %s not found", name)
+		return "", NewTemplateNotFound(name, []string{name}, nil)
 	}
 	return template, nil
 }
