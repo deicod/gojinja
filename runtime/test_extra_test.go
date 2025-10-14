@@ -219,6 +219,38 @@ func TestNamespaceGlobal(t *testing.T) {
 	}
 }
 
+func TestNamespaceStatementCreatesNamespace(t *testing.T) {
+	tpl := `{% namespace ns %}{% set ns.value = 42 %}{% endnamespace %}{{ ns.value }}`
+	res, err := ExecuteToString(tpl, nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if strings.TrimSpace(res) != "42" {
+		t.Fatalf("expected namespace to expose updated value, got %q", res)
+	}
+}
+
+func TestNamespaceStatementInitializer(t *testing.T) {
+	tpl := `{% set seed = namespace(counter=2) %}{% namespace ns = seed %}{% set ns.counter = ns.counter + 3 %}{% endnamespace %}{{ ns.counter }}`
+	res, err := ExecuteToString(tpl, nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if strings.TrimSpace(res) != "5" {
+		t.Fatalf("expected namespace initializer to be reused, got %q", res)
+	}
+}
+
+func TestNamespaceStatementRejectsInvalidInitializer(t *testing.T) {
+	_, err := ExecuteToString(`{% namespace ns = 42 %}{% endnamespace %}`, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid namespace initializer")
+	}
+	if !strings.Contains(err.Error(), "expects a namespace or mapping") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDictGlobalKeywords(t *testing.T) {
 	res, err := ExecuteToString("{{ dict(foo='bar', baz=2).foo }}", nil)
 	if err != nil {

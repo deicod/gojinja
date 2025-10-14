@@ -307,10 +307,10 @@ func (f *For) String() string {
 // If represents an if statement
 type If struct {
 	BaseStmt
-	Test  Expr   `json:"test"`
-	Body  []Node `json:"body"`
-	Elif  []*If  `json:"elif"`
-	Else  []Node `json:"else"`
+	Test Expr   `json:"test"`
+	Body []Node `json:"body"`
+	Elif []*If  `json:"elif"`
+	Else []Node `json:"else"`
 }
 
 func (i *If) Accept(visitor Visitor) interface{} {
@@ -343,10 +343,10 @@ func (i *If) String() string {
 // Macro represents a macro definition
 type Macro struct {
 	BaseStmt
-	Name     string    `json:"name"`
-	Args     []*Name   `json:"args"`
-	Defaults []Expr    `json:"defaults"`
-	Body     []Node    `json:"body"`
+	Name     string  `json:"name"`
+	Args     []*Name `json:"args"`
+	Defaults []Expr  `json:"defaults"`
+	Body     []Node  `json:"body"`
 }
 
 func (m *Macro) Accept(visitor Visitor) interface{} {
@@ -377,10 +377,10 @@ func (m *Macro) String() string {
 // CallBlock represents a call block (like a macro without a name)
 type CallBlock struct {
 	BaseStmt
-	Call    *Call    `json:"call"`
-	Args    []*Name  `json:"args"`
+	Call     *Call   `json:"call"`
+	Args     []*Name `json:"args"`
 	Defaults []Expr  `json:"defaults"`
-	Body    []Node   `json:"body"`
+	Body     []Node  `json:"body"`
 }
 
 func (c *CallBlock) Accept(visitor Visitor) interface{} {
@@ -442,9 +442,9 @@ func (f *FilterBlock) String() string {
 // With represents a with statement
 type With struct {
 	BaseStmt
-	Targets []Expr  `json:"targets"`
-	Values  []Expr  `json:"values"`
-	Body    []Node  `json:"body"`
+	Targets []Expr `json:"targets"`
+	Values  []Expr `json:"values"`
+	Body    []Node `json:"body"`
 }
 
 func (w *With) Accept(visitor Visitor) interface{} {
@@ -474,6 +474,34 @@ func (w *With) GetChildren() []Node {
 func (w *With) String() string {
 	return fmt.Sprintf("With(targets=%v, values=%v, body=%v)",
 		w.Targets, w.Values, w.Body)
+}
+
+// Namespace represents a namespace block that exposes a mutable namespace value
+// to the surrounding scope after executing its body.
+type Namespace struct {
+	BaseStmt
+	Name  string `json:"name"`
+	Value Expr   `json:"value"`
+	Body  []Node `json:"body"`
+}
+
+func (n *Namespace) Accept(visitor Visitor) interface{} {
+	return visitor.Visit(n)
+}
+
+func (n *Namespace) GetChildren() []Node {
+	var children []Node
+
+	if n.Value != nil {
+		children = append(children, n.Value)
+	}
+
+	children = append(children, n.Body...)
+	return children
+}
+
+func (n *Namespace) String() string {
+	return fmt.Sprintf("Namespace(name=%s, value=%v, body=%v)", n.Name, n.Value, n.Body)
 }
 
 // Block represents a block
@@ -525,9 +553,9 @@ func (i *Include) String() string {
 // Import represents an import tag
 type Import struct {
 	BaseStmt
-	Template    Expr `json:"template"`
+	Template    Expr   `json:"template"`
 	Target      string `json:"target"`
-	WithContext bool `json:"with_context"`
+	WithContext bool   `json:"with_context"`
 }
 
 func (i *Import) Accept(visitor Visitor) interface{} {
@@ -549,9 +577,9 @@ func (i *Import) String() string {
 // FromImport represents a from import tag
 type FromImport struct {
 	BaseStmt
-	Template    Expr           `json:"template"`
-	Names       []ImportName   `json:"names"`
-	WithContext bool           `json:"with_context"`
+	Template    Expr         `json:"template"`
+	Names       []ImportName `json:"names"`
+	WithContext bool         `json:"with_context"`
 }
 
 // ImportName represents either a simple name or an alias (name, alias)
@@ -626,9 +654,9 @@ func (a *Assign) String() string {
 // AssignBlock represents a block assignment
 type AssignBlock struct {
 	BaseStmt
-	Target Expr     `json:"target"`
-	Filter *Filter  `json:"filter"`
-	Body   []Node   `json:"body"`
+	Target Expr    `json:"target"`
+	Filter *Filter `json:"filter"`
+	Body   []Node  `json:"body"`
 }
 
 func (a *AssignBlock) Accept(visitor Visitor) interface{} {
@@ -684,8 +712,8 @@ func (d *Do) Type() string {
 // BinExpr represents binary expressions
 type BinExpr struct {
 	BaseExpr
-	Left     Expr  `json:"left"`
-	Right    Expr  `json:"right"`
+	Left     Expr   `json:"left"`
+	Right    Expr   `json:"right"`
 	Operator string `json:"operator"`
 }
 
@@ -716,7 +744,7 @@ func (b *BinExpr) Type() string {
 // UnaryExpr represents unary expressions
 type UnaryExpr struct {
 	BaseExpr
-	Node     Expr  `json:"node"`
+	Node     Expr   `json:"node"`
 	Operator string `json:"operator"`
 }
 
@@ -1147,13 +1175,13 @@ func (c *CondExpr) AsConst(ctx *EvalContext) (interface{}, error) {
 // FilterTestCommon represents common functionality for filters and tests
 type FilterTestCommon struct {
 	BaseExpr
-	Node      Expr       `json:"node"`
-	Name      string     `json:"name"`
-	Args      []Expr     `json:"args"`
-	Kwargs    []*Pair    `json:"kwargs"`
-	DynArgs   Expr       `json:"dyn_args"`
-	DynKwargs Expr       `json:"dyn_kwargs"`
-	IsFilter  bool       `json:"is_filter"`
+	Node      Expr    `json:"node"`
+	Name      string  `json:"name"`
+	Args      []Expr  `json:"args"`
+	Kwargs    []*Pair `json:"kwargs"`
+	DynArgs   Expr    `json:"dyn_args"`
+	DynKwargs Expr    `json:"dyn_kwargs"`
+	IsFilter  bool    `json:"is_filter"`
 }
 
 func (f *FilterTestCommon) Accept(visitor Visitor) interface{} {
@@ -1284,8 +1312,8 @@ func (c *Call) Type() string {
 // Getitem represents item access (obj[key])
 type Getitem struct {
 	BaseExpr
-	Node Expr `json:"node"`
-	Arg  Expr `json:"arg"`
+	Node Expr   `json:"node"`
+	Arg  Expr   `json:"arg"`
 	Ctx  string `json:"ctx"`
 }
 
@@ -1500,7 +1528,7 @@ func (c *Concat) AsConst(ctx *EvalContext) (interface{}, error) {
 // Compare represents comparison expressions
 type Compare struct {
 	BaseExpr
-	Expr Expr        `json:"expr"`
+	Expr Expr       `json:"expr"`
 	Ops  []*Operand `json:"ops"`
 }
 

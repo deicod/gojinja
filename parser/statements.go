@@ -154,6 +154,37 @@ func (p *Parser) ParseInclude() (nodes.Node, error) {
 	return include, nil
 }
 
+// ParseNamespace parses a namespace declaration block
+func (p *Parser) ParseNamespace() (nodes.Node, error) {
+	lineno := p.stream.Next().Line // consume 'namespace'
+
+	nameToken, err := p.Expect(lexer.TokenName)
+	if err != nil {
+		return nil, err
+	}
+
+	namespace := &nodes.Namespace{
+		Name: nameToken.Value,
+	}
+
+	if p.SkipIf(lexer.TokenAssign) {
+		valueExpr, err := p.ParseExpression()
+		if err != nil {
+			return nil, err
+		}
+		namespace.Value = valueExpr
+	}
+
+	body, err := p.ParseStatements([]string{"name:endnamespace"}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	namespace.Body = body
+	namespace.SetPosition(nodes.NewPosition(lineno, 0))
+	return namespace, nil
+}
+
 // ParseImport parses an import statement
 func (p *Parser) ParseImport() (nodes.Node, error) {
 	lineno := p.stream.Next().Line // consume 'import'

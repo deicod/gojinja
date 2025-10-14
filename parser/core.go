@@ -51,6 +51,8 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 			return p.ParseSet()
 		case "with":
 			return p.ParseWith()
+		case "namespace":
+			return p.ParseNamespace()
 		case "autoescape":
 			return p.ParseAutoescape()
 		case "print":

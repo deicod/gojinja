@@ -426,6 +426,7 @@ var statementKeywords = map[string]bool{
 	"import":     true,
 	"set":        true,
 	"with":       true,
+	"namespace":  true,
 	"autoescape": true,
 	"break":      true,
 	"continue":   true,
