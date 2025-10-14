@@ -439,6 +439,52 @@ func TestKeepTrailingNewlineOption(t *testing.T) {
 	}
 }
 
+func TestLineStatementRendering(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLineStatementPrefix("#")
+
+	tpl, err := env.ParseString(`# for v in values:
+- {{ v }}
+# endfor
+`, "line_stmt")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tpl.ExecuteToString(map[string]interface{}{"values": []int{0, 1, 2}})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+
+	expected := "- 0\n- 1\n- 2"
+	if result != expected {
+		t.Fatalf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestLineCommentRendering(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLineStatementPrefix("#")
+	env.SetLineCommentPrefix("//")
+
+	tpl, err := env.ParseString(`// ignore me
+# set value = 5
+value: {{ value }}
+`, "line_comment")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+
+	if result != "value: 5" {
+		t.Fatalf("expected 'value: 5', got %q", result)
+	}
+}
+
 func TestListTupleDictTests(t *testing.T) {
 	listResult, err := ExecuteToString("{% if value is list %}yes{% else %}no{% endif %}", map[string]interface{}{"value": []int{1, 2, 3}})
 	if err != nil {

@@ -27,6 +27,8 @@ func (env *Environment) ParseString(templateString, name string) (*Template, err
 		TrimBlocks:          env.trimBlocks,
 		LstripBlocks:        env.lstripBlocks,
 		KeepTrailingNewline: env.keepTrailingNewline,
+		LineStatementPrefix: env.lineStatementPrefix,
+		LineCommentPrefix:   env.lineCommentPrefix,
 	}
 
 	// Parse template using the parser

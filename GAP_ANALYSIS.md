@@ -4,7 +4,7 @@ Severity scale: **High** – breaks common templates or core semantics, **Medium
 
 | Area | Gap | Severity | Notes / References |
 | --- | --- | --- | --- |
-| Parser | Line-statement prefix unsupported | Medium | Jinja’s `#` line statements remain missing in `parser/core.go`, impacting compact templates |
+| Parser | Line-statement/line-comment prefixes configurable | Resolved | `Environment.SetLineStatementPrefix` / `SetLineCommentPrefix` wire parser + lexer support for compact control lines |
 | Runtime | Bytecode cache / template cache policy differs (no loader integration for search paths, mtime checks) | Low | `runtime/environment.go` cache lacks filesystem invalidation; affects production caching parity |
 | Runtime | Async rendering (`async for/with`, async filters/tests/globals) absent | Low | Python Jinja supports optional async; Go port executes synchronously |
 | Filters | Missing key filters (`filesizeformat`, `floatformat`, `escapejs`, `tojson`, `urlize`, `wordwrap`, `random`, etc.) | High | Many templates depend on these; inventory in `runtime/filters.go` lacks these implementations |

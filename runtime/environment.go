@@ -173,6 +173,8 @@ type Environment struct {
 	lstripBlocks        bool
 	keepTrailingNewline bool
 	newlineSequence     string
+	lineStatementPrefix string
+	lineCommentPrefix   string
 	finalize            FinalizeFunc
 	undefinedFactory    UndefinedFactory
 
@@ -209,6 +211,8 @@ func NewEnvironment() *Environment {
 		trimBlocks:          false,
 		lstripBlocks:        false,
 		keepTrailingNewline: false,
+		lineStatementPrefix: "",
+		lineCommentPrefix:   "",
 		extensions:          []string{},
 		policies:            make(map[string]interface{}),
 		sandboxed:           false,
@@ -403,6 +407,34 @@ func (env *Environment) NewlineSequence() string {
 		return "\n"
 	}
 	return env.newlineSequence
+}
+
+// SetLineStatementPrefix configures the prefix that marks line statements (e.g. "#")
+func (env *Environment) SetLineStatementPrefix(prefix string) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.lineStatementPrefix = prefix
+}
+
+// LineStatementPrefix returns the configured line statement prefix
+func (env *Environment) LineStatementPrefix() string {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+	return env.lineStatementPrefix
+}
+
+// SetLineCommentPrefix configures the prefix that marks line comments
+func (env *Environment) SetLineCommentPrefix(prefix string) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.lineCommentPrefix = prefix
+}
+
+// LineCommentPrefix returns the configured line comment prefix
+func (env *Environment) LineCommentPrefix() string {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+	return env.lineCommentPrefix
 }
 
 // SetFinalize registers a finalize function executed on values before rendering
@@ -947,6 +979,8 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 		TrimBlocks:          env.trimBlocks,
 		LstripBlocks:        env.lstripBlocks,
 		KeepTrailingNewline: env.keepTrailingNewline,
+		LineStatementPrefix: env.lineStatementPrefix,
+		LineCommentPrefix:   env.lineCommentPrefix,
 	}
 
 	// Parse the template
