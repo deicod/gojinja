@@ -361,7 +361,7 @@ func (env *Environment) SetLoader(loader Loader) {
 func (env *Environment) SetAutoescape(value interface{}) {
 	env.mu.Lock()
 	defer env.mu.Unlock()
-	env.autoescape = value
+	env.autoescape = normalizeAutoescapeValue(value)
 }
 
 // SetTrimBlocks sets whether to trim the first newline after a block tag
@@ -542,11 +542,103 @@ func (env *Environment) shouldAutoescape(templateName string) bool {
 		}
 	case []string:
 		return hasHTMLLikeExtension(templateName, v)
+	case []interface{}:
+		extensions := make([]string, 0, len(v))
+		for _, item := range v {
+			extensions = append(extensions, fmt.Sprint(item))
+		}
+		return hasHTMLLikeExtension(templateName, extensions)
 	case func(string) bool:
 		return v(templateName)
 	default:
 		return hasHTMLLikeExtension(templateName, []string{".html", ".htm", ".xml"})
 	}
+}
+
+// SelectAutoescape returns a selector function compatible with SetAutoescape.
+// It mirrors Jinja's select_autoescape helper by checking file extensions
+// against enabled and disabled lists, falling back to the provided defaults
+// when no match is found. The selector treats template names case
+// insensitively and handles string templates (empty name) by returning
+// defaultForString.
+func SelectAutoescape(enabled, disabled []string, defaultForString, defaultDecision bool) func(string) bool {
+	enabledNorm := normalizeExtensionList(enabled)
+	disabledNorm := normalizeExtensionList(disabled)
+
+	return func(name string) bool {
+		if name == "" {
+			return defaultForString
+		}
+
+		lower := strings.ToLower(name)
+		for _, ext := range disabledNorm {
+			if strings.HasSuffix(lower, ext) {
+				return false
+			}
+		}
+		for _, ext := range enabledNorm {
+			if strings.HasSuffix(lower, ext) {
+				return true
+			}
+		}
+		return defaultDecision
+	}
+}
+
+func normalizeAutoescapeValue(value interface{}) interface{} {
+	if value == nil {
+		return AutoescapeDefault
+	}
+
+	switch v := value.(type) {
+	case []string:
+		return normalizeExtensionList(v)
+	case []interface{}:
+		extensions := make([]string, 0, len(v))
+		for _, item := range v {
+			extensions = append(extensions, fmt.Sprint(item))
+		}
+		return normalizeExtensionList(extensions)
+	case func(string) bool, bool, string:
+		return v
+	}
+
+	rv := reflect.ValueOf(value)
+	if rv.IsValid() {
+		if rv.Kind() == reflect.Pointer {
+			rv = rv.Elem()
+		}
+		if rv.IsValid() && rv.Kind() == reflect.Slice {
+			extensions := make([]string, 0, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				extensions = append(extensions, fmt.Sprint(rv.Index(i).Interface()))
+			}
+			return normalizeExtensionList(extensions)
+		}
+	}
+
+	return value
+}
+
+func normalizeExtensionList(exts []string) []string {
+	normalized := make([]string, 0, len(exts))
+	seen := make(map[string]struct{}, len(exts))
+	for _, ext := range exts {
+		ext = strings.TrimSpace(ext)
+		if ext == "" {
+			continue
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		ext = strings.ToLower(ext)
+		if _, ok := seen[ext]; ok {
+			continue
+		}
+		seen[ext] = struct{}{}
+		normalized = append(normalized, ext)
+	}
+	return normalized
 }
 
 func (env *Environment) applyFinalize(value interface{}) (interface{}, error) {
