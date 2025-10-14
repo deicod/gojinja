@@ -38,31 +38,97 @@ type Loader interface {
 
 // FileSystemLoader loads templates from the file system
 type FileSystemLoader struct {
-	basePath string
-	mu       sync.RWMutex
+	basePaths []string
+	mu        sync.RWMutex
 }
 
-// NewFileSystemLoader creates a new file system loader
-func NewFileSystemLoader(basePath string) *FileSystemLoader {
+// NewFileSystemLoader creates a new file system loader. It accepts one or more
+// base paths that will be searched in order when loading templates, mirroring
+// the behaviour of Jinja's FileSystemLoader search path semantics. When no
+// paths are provided, it defaults to the current working directory.
+func NewFileSystemLoader(basePaths ...string) *FileSystemLoader {
+	paths := make([]string, 0, len(basePaths))
+	for _, p := range basePaths {
+		if p == "" {
+			continue
+		}
+		paths = append(paths, p)
+	}
+	if len(paths) == 0 {
+		paths = append(paths, ".")
+	}
+
 	return &FileSystemLoader{
-		basePath: basePath,
+		basePaths: paths,
 	}
 }
 
 // Load loads a template from the file system
 func (l *FileSystemLoader) Load(name string) (string, error) {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
+	basePaths := append([]string(nil), l.basePaths...)
+	l.mu.RUnlock()
 
-	fullPath := filepath.Join(l.basePath, name)
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", NewTemplateNotFound(name, []string{fullPath}, err)
+	var tried []string
+	for _, basePath := range basePaths {
+		fullPath := filepath.Join(basePath, name)
+		tried = append(tried, fullPath)
+
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", err
 		}
-		return "", err
+		return string(data), nil
 	}
-	return string(data), nil
+
+	return "", NewTemplateNotFound(name, tried, os.ErrNotExist)
+}
+
+// SetSearchPath replaces the loader's search path list with the provided
+// values. A copy is stored so callers can mutate their slice without affecting
+// the loader.
+func (l *FileSystemLoader) SetSearchPath(paths ...string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	filtered := filteredSearchPaths(paths)
+	if len(filtered) == 0 {
+		filtered = []string{"."}
+	}
+	l.basePaths = filtered
+}
+
+// AddSearchPath appends a new search path to the loader. Empty paths are
+// ignored.
+func (l *FileSystemLoader) AddSearchPath(path string) {
+	if path == "" {
+		return
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.basePaths = append(l.basePaths, path)
+}
+
+// SearchPath returns a copy of the configured search paths.
+func (l *FileSystemLoader) SearchPath() []string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return append([]string(nil), l.basePaths...)
+}
+
+func filteredSearchPaths(paths []string) []string {
+	filtered := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
 }
 
 // MapLoader loads templates from a map
