@@ -91,6 +91,70 @@ func TestRandomFilterWithSeed(t *testing.T) {
 	}
 }
 
+func TestWordwrapBasic(t *testing.T) {
+	out, err := ExecuteToString("{{ 'hello world'|wordwrap(5) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "hello\nworld" {
+		t.Fatalf("expected 'hello\\nworld', got %q", out)
+	}
+}
+
+func TestWordwrapBreakOptions(t *testing.T) {
+	out, err := ExecuteToString("{{ 'foo-bar-baz'|wordwrap(3, false, '\\n', true) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "foo-\nbar-\nbaz" {
+		t.Fatalf("unexpected break-on-hyphen output: %q", out)
+	}
+
+	out, err = ExecuteToString("{{ 'foo-bar-baz'|wordwrap(3, false, '\\n', false) }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "foo-bar-baz" {
+		t.Fatalf("expected hyphenated word to remain intact, got %q", out)
+	}
+}
+
+func TestWordwrapCustomWrapstring(t *testing.T) {
+	out, err := ExecuteToString("{{ 'hello world'|wordwrap(5, true, '|') }}", nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "hello|world" {
+		t.Fatalf("expected custom wrapstring, got %q", out)
+	}
+}
+
+func TestWordwrapRespectsEnvironmentNewline(t *testing.T) {
+	env := NewEnvironment()
+	env.SetNewlineSequence("\r\n")
+	tmpl, err := env.ParseString("{{ 'hello world'|wordwrap(5) }}", "wordwrap")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	out, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "hello\r\nworld" {
+		t.Fatalf("expected CRLF wrapped output, got %q", out)
+	}
+}
+
+func TestWordwrapWidthValidation(t *testing.T) {
+	_, err := ExecuteToString("{{ 'hello'|wordwrap(0) }}", nil)
+	if err == nil {
+		t.Fatal("expected error for invalid width")
+	}
+	if !strings.Contains(err.Error(), "width > 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestFloatformat(t *testing.T) {
 	tpl := "{{ value|floatformat(2) }}"
 	res, err := ExecuteToString(tpl, map[string]interface{}{"value": 3.14159})

@@ -102,6 +102,7 @@ type Environment struct {
 	trimBlocks          bool
 	lstripBlocks        bool
 	keepTrailingNewline bool
+	newlineSequence     string
 	finalize            FinalizeFunc
 	undefinedFactory    UndefinedFactory
 
@@ -152,6 +153,7 @@ func NewEnvironment() *Environment {
 		cache:               NewTemplateCache(0, 400), // No TTL by default
 		macroRegistry:       NewMacroRegistry(),
 		loadingTemplates:    make(map[string]bool),
+		newlineSequence:     "\n",
 	}
 
 	// Populate policy defaults to match Jinja2 behaviour
@@ -314,6 +316,23 @@ func (env *Environment) ShouldKeepTrailingNewline() bool {
 	env.mu.RLock()
 	defer env.mu.RUnlock()
 	return env.keepTrailingNewline
+}
+
+// SetNewlineSequence configures the sequence used when generating newlines in filters
+func (env *Environment) SetNewlineSequence(seq string) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.newlineSequence = seq
+}
+
+// NewlineSequence returns the configured newline sequence, defaulting to \n when unset
+func (env *Environment) NewlineSequence() string {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+	if env.newlineSequence == "" {
+		return "\n"
+	}
+	return env.newlineSequence
 }
 
 // SetFinalize registers a finalize function executed on values before rendering
