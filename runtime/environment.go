@@ -226,7 +226,7 @@ type Environment struct {
 	undefinedFactory    UndefinedFactory
 
 	// Extensions
-	extensions []string
+	extensions []parser.Extension
 	policies   map[string]interface{}
 
 	// Security
@@ -260,7 +260,7 @@ func NewEnvironment() *Environment {
 		keepTrailingNewline: false,
 		lineStatementPrefix: "",
 		lineCommentPrefix:   "",
-		extensions:          []string{},
+		extensions:          []parser.Extension{},
 		policies:            make(map[string]interface{}),
 		sandboxed:           false,
 		secureDefaults:      true,
@@ -496,6 +496,98 @@ func (env *Environment) SetUndefinedFactory(factory UndefinedFactory) {
 	env.mu.Lock()
 	defer env.mu.Unlock()
 	env.undefinedFactory = factory
+}
+
+// AddExtension registers a parser extension with the environment. Extensions are
+// invoked during parsing to handle custom tags. If the same extension instance
+// is added multiple times it will be ignored to preserve registration order.
+func (env *Environment) AddExtension(ext parser.Extension) {
+	if ext == nil {
+		return
+	}
+
+	env.mu.Lock()
+	defer env.mu.Unlock()
+
+	for _, existing := range env.extensions {
+		if extensionEqual(existing, ext) {
+			return
+		}
+	}
+
+	env.extensions = append(env.extensions, ext)
+}
+
+// ClearExtensions removes all registered parser extensions from the environment.
+func (env *Environment) ClearExtensions() {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	if len(env.extensions) == 0 {
+		return
+	}
+	env.extensions = nil
+}
+
+// RemoveExtension unregisters a previously added parser extension. It returns
+// true when the extension was found and removed.
+func (env *Environment) RemoveExtension(ext parser.Extension) bool {
+	if ext == nil {
+		return false
+	}
+
+	env.mu.Lock()
+	defer env.mu.Unlock()
+
+	for i, existing := range env.extensions {
+		if extensionEqual(existing, ext) {
+			env.extensions = append(env.extensions[:i], env.extensions[i+1:]...)
+			return true
+		}
+	}
+
+	return false
+}
+
+// Extensions returns a snapshot of the registered parser extensions. The slice
+// is a copy and can be safely modified by the caller without affecting the
+// environment's internal state.
+func (env *Environment) Extensions() []parser.Extension {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+
+	if len(env.extensions) == 0 {
+		return nil
+	}
+
+	snapshot := make([]parser.Extension, len(env.extensions))
+	copy(snapshot, env.extensions)
+	return snapshot
+}
+
+func extensionEqual(a, b parser.Extension) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	va := reflect.ValueOf(a)
+	vb := reflect.ValueOf(b)
+
+	if va.Kind() == reflect.Pointer && vb.Kind() == reflect.Pointer {
+		if va.Pointer() == vb.Pointer() {
+			return true
+		}
+	}
+
+	ta := reflect.TypeOf(a)
+	tb := reflect.TypeOf(b)
+	if ta == tb && ta.Comparable() {
+		return a == b
+	}
+	if ta.Comparable() && tb.Comparable() {
+		return a == b
+	}
+
+	return false
 }
 
 // AddFilter adds a custom filter
@@ -1120,6 +1212,7 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 		KeepTrailingNewline: env.keepTrailingNewline,
 		LineStatementPrefix: env.lineStatementPrefix,
 		LineCommentPrefix:   env.lineCommentPrefix,
+		Extensions:          env.Extensions(),
 	}
 
 	// Parse the template
