@@ -888,25 +888,79 @@ func filterMax(ctx *Context, value interface{}, args ...interface{}) (interface{
 }
 
 func filterSum(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
-	start := 0.0
-	if len(args) > 0 {
-		if s, ok := args[0].(float64); ok {
-			start = s
+	kwargs, positional := extractKwargs(args)
+
+	var attrName string
+	var start float64
+	startSet := false
+
+	if kwargs != nil {
+		if attr, ok := kwargs["attribute"]; ok && attr != nil {
+			attrName = toString(attr)
+		}
+		if startVal, ok := kwargs["start"]; ok {
+			if num, ok := toFloat64(startVal); ok {
+				start = num
+				startSet = true
+			} else {
+				return nil, fmt.Errorf("sum filter start value must be numeric")
+			}
 		}
 	}
 
-	switch v := value.(type) {
-	case []interface{}:
-		sum := start
-		for _, item := range v {
-			if num, ok := toFloat64(item); ok {
-				sum += num
-			}
+	if attrName == "" && len(positional) > 0 {
+		if str, ok := positional[0].(string); ok {
+			attrName = str
+			positional = positional[1:]
+		} else if positional[0] == nil {
+			positional = positional[1:]
 		}
-		return sum, nil
-	default:
-		return nil, fmt.Errorf("sum filter requires a sequence of numbers")
 	}
+
+	if len(positional) > 0 && !startSet {
+		if num, ok := toFloat64(positional[0]); ok {
+			start = num
+			startSet = true
+			positional = positional[1:]
+		} else if positional[0] == nil {
+			positional = positional[1:]
+		} else {
+			return nil, fmt.Errorf("sum filter start value must be numeric")
+		}
+	}
+
+	if len(positional) > 0 {
+		return nil, fmt.Errorf("sum filter received too many arguments")
+	}
+
+	items, err := sequenceToSlice(value)
+	if err != nil {
+		return nil, fmt.Errorf("sum filter requires a sequence")
+	}
+
+	total := start
+	for _, item := range items {
+		target := item
+		if attrName != "" {
+			attr, err := getAttribute(item, attrName)
+			if err != nil {
+				return nil, err
+			}
+			target = attr
+		}
+
+		if target == nil {
+			continue
+		}
+
+		if num, ok := toFloat64(target); ok {
+			total += num
+			continue
+		}
+		return nil, fmt.Errorf("sum filter requires numeric values")
+	}
+
+	return total, nil
 }
 
 func filterList(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {

@@ -19,10 +19,10 @@
 
 ## Built-in Filters
 
-- String, list, numeric, and utility filters now cover the standard library, including `abs`, `attr`, `batch`, `capitalize`, `center`, `default`, `dictsort`, `dictsortcasesensitive`, `dictsortreversed`, `escape`/`e`, `escapejs`, `filesizeformat`, `filter`, `first`, `float`, `floatformat`, `forceescape`, `format`, `fromjson`, `groupby`, `indent`, `int`, `join`, `last`, `length`, `list`, `lower`, `ltrim`, `map`, `max`, `min`, `pprint`, `random`, `reject`, `rejectattr`, `replace`, `reverse`, `round`, `safe`, `select`, `selectattr`, `slice`, `sort`, `striptags`, `sum`, `title`, `trim`, `truncate`, `unique`, `upper`, `urlencode`, `urlize`, `wordcount`, `wordwrap`, `xmlattr`, `tojson`, and `do` (`runtime/filters.go`).
-- Keyword argument handling matches Jinja for filters such as `wordwrap`, `filesizeformat`, `urlize`, and the new `dictsort` family, and the environment newline settings flow into wrapping behaviour (`runtime/filters.go`).
+- String, list, numeric, and utility filters now cover the standard library, including `abs`, `attr`, `batch`, `capitalize`, `center`, `default`, `dictsort`, `dictsortcasesensitive`, `dictsortreversed`, `escape`/`e`, `escapejs`, `filesizeformat`, `filter`, `first`, `float`, `floatformat`, `forceescape`, `format`, `fromjson`, `groupby`, `indent`, `int`, `join`, `last`, `length`, `list`, `lower`, `ltrim`, `map`, `max`, `min`, `pprint`, `random`, `reject`, `rejectattr`, `replace`, `reverse`, `round`, `safe`, `select`, `selectattr`, `slice`, `sort`, `striptags`, `sum` (with `attribute` and `start` support), `title`, `trim`, `truncate`, `unique`, `upper`, `urlencode`, `urlize`, `wordcount`, `wordwrap`, `xmlattr`, `tojson`, and `do` (`runtime/filters.go`).
+- Keyword argument handling matches Jinja for filters such as `wordwrap`, `filesizeformat`, `urlize`, the `dictsort` family, and the `sum` filter's `attribute`/`start` options, and the environment newline settings flow into wrapping behaviour (`runtime/filters.go`).
 
-**Remaining gaps**: collection helpers such as `sum` still lack support for the `attribute` keyword and richer type coercions, and async-aware filters remain unimplemented.
+**Remaining gaps**: richer type coercions for some filters and async-aware filters remain unimplemented.
 
 ## Built-in Tests
 

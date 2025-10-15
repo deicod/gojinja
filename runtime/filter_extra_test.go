@@ -5,6 +5,45 @@ import (
 	"testing"
 )
 
+func TestSumFilterBasic(t *testing.T) {
+	tpl := "{{ numbers|sum }}"
+	out, err := ExecuteToString(tpl, map[string]interface{}{"numbers": []int{1, 2, 3}})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "6" {
+		t.Fatalf("expected '6', got %q", out)
+	}
+}
+
+func TestSumFilterWithStartArgument(t *testing.T) {
+	tpl := "{{ numbers|sum(5) }}"
+	out, err := ExecuteToString(tpl, map[string]interface{}{"numbers": []interface{}{1, 2, 3}})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "11" {
+		t.Fatalf("expected '11', got %q", out)
+	}
+}
+
+func TestSumFilterWithAttribute(t *testing.T) {
+	tpl := "{{ items|sum(attribute='value', start=1) }}"
+	ctx := map[string]interface{}{
+		"items": []map[string]interface{}{
+			{"value": 2},
+			{"value": 3},
+		},
+	}
+	out, err := ExecuteToString(tpl, ctx)
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "6" {
+		t.Fatalf("expected '6', got %q", out)
+	}
+}
+
 func TestFilesizeformatDecimal(t *testing.T) {
 	output, err := ExecuteToString("{{ 3000|filesizeformat }}", nil)
 	if err != nil {
