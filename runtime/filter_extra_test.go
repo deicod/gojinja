@@ -405,3 +405,88 @@ func TestSelectAttrKeyword(t *testing.T) {
 		t.Fatalf("unexpected selectattr output: %q", res)
 	}
 }
+
+func TestDictsortDefault(t *testing.T) {
+	out, err := ExecuteToString("{{ data|dictsort|tojson }}", map[string]interface{}{
+		"data": map[string]interface{}{"b": 1, "A": 2},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"A\",2],[\"b\",1]]" {
+		t.Fatalf("unexpected dictsort output: %q", out)
+	}
+}
+
+func TestDictsortByValue(t *testing.T) {
+	out, err := ExecuteToString("{{ data|dictsort(by='value')|tojson }}", map[string]interface{}{
+		"data": map[string]interface{}{"apple": 3, "banana": 1},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"banana\",1],[\"apple\",3]]" {
+		t.Fatalf("unexpected dictsort(by='value') output: %q", out)
+	}
+}
+
+func TestDictsortReversedAlias(t *testing.T) {
+	out, err := ExecuteToString("{{ data|dictsortreversed|tojson }}", map[string]interface{}{
+		"data": map[string]interface{}{"one": 1, "two": 2},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"two\",2],[\"one\",1]]" {
+		t.Fatalf("unexpected dictsortreversed output: %q", out)
+	}
+}
+
+func TestDictsortCaseSensitiveAlias(t *testing.T) {
+	out, err := ExecuteToString("{{ data|dictsortcasesensitive|tojson }}", map[string]interface{}{
+		"data": map[string]interface{}{"a": 1, "B": 2},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"B\",2],[\"a\",1]]" {
+		t.Fatalf("unexpected dictsortcasesensitive output: %q", out)
+	}
+
+	out, err = ExecuteToString("{{ data|dictsortcasesensitive(false)|tojson }}", map[string]interface{}{
+		"data": map[string]interface{}{"a": 1, "B": 2},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"a\",1],[\"B\",2]]" {
+		t.Fatalf("expected override of case sensitivity, got %q", out)
+	}
+}
+
+func TestDictsortSequenceInput(t *testing.T) {
+	out, err := ExecuteToString("{{ items|dictsort|tojson }}", map[string]interface{}{
+		"items": []interface{}{
+			[]interface{}{"b", 2},
+			[]interface{}{"a", 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if out != "[[\"a\",1],[\"b\",2]]" {
+		t.Fatalf("unexpected dictsort sequence output: %q", out)
+	}
+}
+
+func TestDictsortInvalidByOption(t *testing.T) {
+	_, err := ExecuteToString("{{ data|dictsort(by='unknown') }}", map[string]interface{}{
+		"data": map[string]interface{}{"one": 1},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid by option")
+	}
+	if !strings.Contains(err.Error(), "unknown 'by'") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
