@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/deicod/gojinja/nodes"
@@ -43,6 +44,8 @@ type Evaluator struct {
 	securityCtx    *SecurityContext
 	securityChecks bool
 }
+
+var spacelessBetweenTags = regexp.MustCompile(`>\s+<`)
 
 // NewEvaluator creates a new evaluator
 func NewEvaluator(ctx *Context) *Evaluator {
@@ -173,6 +176,8 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitCallBlock(n)
 	case *nodes.FilterBlock:
 		return e.visitFilterBlock(n)
+	case *nodes.Spaceless:
+		return e.visitSpaceless(n)
 	case *nodes.With:
 		return e.visitWith(n)
 	case *nodes.Assign:
@@ -888,6 +893,43 @@ func (e *Evaluator) visitFilterBlock(node *nodes.FilterBlock) interface{} {
 	}
 
 	return nil
+}
+
+func (e *Evaluator) visitSpaceless(node *nodes.Spaceless) interface{} {
+	var buf strings.Builder
+	oldWriter := e.ctx.writer
+	e.ctx.writer = &buf
+
+	for _, stmt := range node.Body {
+		if result := e.Evaluate(stmt); result != nil {
+			e.ctx.writer = oldWriter
+			if err, ok := result.(error); ok {
+				return err
+			}
+			if signal, ok := isControlSignal(result); ok {
+				return signal
+			}
+		}
+	}
+
+	e.ctx.writer = oldWriter
+
+	if oldWriter != nil {
+		collapsed := applySpacelessTransform(buf.String())
+		if _, err := io.WriteString(oldWriter, collapsed); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func applySpacelessTransform(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+	return spacelessBetweenTags.ReplaceAllString(trimmed, "><")
 }
 
 func (e *Evaluator) finalizeValue(value interface{}) (interface{}, error) {

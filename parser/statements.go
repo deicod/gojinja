@@ -96,6 +96,20 @@ func (p *Parser) ParseFilterBlock() (nodes.Node, error) {
 	return filterBlock, nil
 }
 
+// ParseSpaceless parses a spaceless block
+func (p *Parser) ParseSpaceless() (nodes.Node, error) {
+	lineno := p.stream.Next().Line // consume 'spaceless'
+
+	body, err := p.ParseStatements([]string{"name:endspaceless"}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	node := &nodes.Spaceless{Body: body}
+	node.SetPosition(nodes.NewPosition(lineno, 0))
+	return node, nil
+}
+
 // ParseBreak parses a break statement
 func (p *Parser) ParseBreak() (nodes.Node, error) {
 	lineno := p.stream.Next().Line // consume 'break'

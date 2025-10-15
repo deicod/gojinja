@@ -3,12 +3,12 @@
 ## Statements and Tags
 
 - Core keywords (`parser/parser.go:196`): `autoescape`, `block`, `break`, `continue`, `do`, `extends`, `for`, `if`, `import`, `include`, `from`, `macro`, `print`, `set`, `with`
-- Additional handlers (`parser/core.go:63`): `call` blocks, `filter` blocks; tag stack and end-token validation mirror Python semantics
+- Additional handlers (`parser/core.go:63`): `call` blocks, `filter` blocks, `spaceless` whitespace-collapsing blocks; tag stack and end-token validation mirror Python semantics
 - Control helpers: `elif`/`else` branches inside `if`, `else` inside `for`, scoped `block` with `required` flag (`parser/core.go:246`)
 - Comment/whitespace control: lexer honors dash/plus trimming syntax and environment flags `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline` (`lexer/lexer.go:682`, `runtime/environment.go:76`)
 - Raw/verbatim blocks (including whitespace-controlled variants) are preserved as literal template data in both parser and runtime
 - Inheritance flow matches block resolution and `super()` support (`runtime/template.go:64`)
-- Missing/partial tags: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`), `{% spaceless %}`, async constructs (`async for/with`), and extension hook registration
+- Missing/partial tags: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`), async constructs (`async for/with`), and extension hook registration
 
 ## Expression & Assignment Support
 

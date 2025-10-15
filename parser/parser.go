@@ -435,6 +435,7 @@ var statementKeywords = map[string]bool{
 	"break":      true,
 	"continue":   true,
 	"do":         true,
+	"spaceless":  true,
 }
 
 // compare operators for parsing

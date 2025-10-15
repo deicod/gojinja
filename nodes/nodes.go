@@ -439,6 +439,24 @@ func (f *FilterBlock) String() string {
 	return fmt.Sprintf("FilterBlock(body=%v, filter=%v)", f.Body, f.Filter)
 }
 
+// Spaceless represents a spaceless block that collapses whitespace between HTML tags.
+type Spaceless struct {
+	BaseStmt
+	Body []Node `json:"body"`
+}
+
+func (s *Spaceless) Accept(visitor Visitor) interface{} {
+	return visitor.Visit(s)
+}
+
+func (s *Spaceless) GetChildren() []Node {
+	return append([]Node(nil), s.Body...)
+}
+
+func (s *Spaceless) String() string {
+	return fmt.Sprintf("Spaceless(body=%v)", s.Body)
+}
+
 // With represents a with statement
 type With struct {
 	BaseStmt

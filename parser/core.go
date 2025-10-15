@@ -31,6 +31,8 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 			return p.ParseContinue()
 		case "do":
 			return p.ParseDo()
+		case "spaceless":
+			return p.ParseSpaceless()
 		case "for":
 			return p.ParseFor()
 		case "if":
