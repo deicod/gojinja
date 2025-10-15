@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/deicod/gojinja/nodes"
 )
@@ -196,6 +197,8 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitScope(n)
 	case *nodes.Namespace:
 		return e.visitNamespace(n)
+	case *nodes.Trans:
+		return e.visitTrans(n)
 
 	// Expression nodes
 	case *nodes.Name:
@@ -1127,6 +1130,317 @@ func (e *Evaluator) visitNamespace(node *nodes.Namespace) interface{} {
 
 	e.ctx.Set(node.Name, namespace)
 	return nil
+}
+
+func (e *Evaluator) visitTrans(node *nodes.Trans) interface{} {
+	state := newTransPlaceholderState()
+
+	base := make(map[string]interface{})
+	for name, expr := range node.Variables {
+		value := e.Evaluate(expr)
+		if err, ok := value.(error); ok {
+			return err
+		}
+		finalized, err := e.finalizeValue(value)
+		if err != nil {
+			return err
+		}
+		base[name] = finalized
+		state.reserve(name)
+	}
+
+	var countValue interface{}
+	countName := node.CountName
+	if countName == "" {
+		countName = "count"
+	}
+	if node.CountExpr != nil {
+		value := e.Evaluate(node.CountExpr)
+		if err, ok := value.(error); ok {
+			return err
+		}
+		finalized, err := e.finalizeValue(value)
+		if err != nil {
+			return err
+		}
+		countValue = finalized
+		base[countName] = finalized
+		state.reserve(countName)
+		if countName != "count" {
+			state.reserve("count")
+		}
+	}
+
+	singularMsg, singularVars, err := e.renderTransBody(node.Singular, base, state)
+	if err != nil {
+		return err
+	}
+
+	allVars := singularVars
+
+	if node.CountExpr != nil && len(node.Plural) > 0 {
+		pluralMsg, pluralVars, err := e.renderTransBody(node.Plural, allVars, state)
+		if err != nil {
+			return err
+		}
+		for k, v := range pluralVars {
+			allVars[k] = v
+		}
+		if countValue != nil {
+			allVars[countName] = countValue
+			if countName != "count" {
+				if _, exists := allVars["count"]; !exists {
+					allVars["count"] = countValue
+				}
+			}
+		}
+
+		result, err := e.invokeNGettext(node, singularMsg, pluralMsg, countValue, allVars)
+		if err != nil {
+			return err
+		}
+
+		finalized, err := e.finalizeValue(result)
+		if err != nil {
+			return err
+		}
+		output := e.toString(finalized, node.GetPosition())
+		if e.ctx.ShouldAutoescape() {
+			output = e.escape(output)
+		}
+		e.Write(output)
+		return nil
+	}
+
+	result, err := e.invokeGettext(node, singularMsg, allVars)
+	if err != nil {
+		return err
+	}
+	finalized, err := e.finalizeValue(result)
+	if err != nil {
+		return err
+	}
+	output := e.toString(finalized, node.GetPosition())
+	if e.ctx.ShouldAutoescape() {
+		output = e.escape(output)
+	}
+	e.Write(output)
+	return nil
+}
+
+func (e *Evaluator) renderTransBody(body []nodes.Node, base map[string]interface{}, state *transPlaceholderState) (string, map[string]interface{}, error) {
+	mapping := make(map[string]interface{}, len(base))
+	for k, v := range base {
+		mapping[k] = v
+	}
+
+	var builder strings.Builder
+
+	for _, child := range body {
+		switch n := child.(type) {
+		case *nodes.Output:
+			for _, expr := range n.Nodes {
+				if data, ok := expr.(*nodes.TemplateData); ok {
+					builder.WriteString(data.Data)
+					continue
+				}
+
+				placeholder := state.nameFor(expr)
+				if _, exists := mapping[placeholder]; !exists {
+					value := e.Evaluate(expr)
+					if err, ok := value.(error); ok {
+						return "", nil, err
+					}
+					finalized, err := e.finalizeValue(value)
+					if err != nil {
+						return "", nil, err
+					}
+					mapping[placeholder] = finalized
+				}
+				builder.WriteString("%(" + placeholder + ")s")
+			}
+		case *nodes.TemplateData:
+			builder.WriteString(n.Data)
+		default:
+			value := e.Evaluate(n)
+			if err, ok := value.(error); ok {
+				return "", nil, err
+			}
+			finalized, err := e.finalizeValue(value)
+			if err != nil {
+				return "", nil, err
+			}
+			builder.WriteString(e.toString(finalized, n.GetPosition()))
+		}
+	}
+
+	return builder.String(), mapping, nil
+}
+
+func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map[string]interface{}) (interface{}, error) {
+	callable, err := e.resolveTransCallable("_", "gettext")
+	if err != nil {
+		return nil, err
+	}
+	if callable == nil {
+		if len(mapping) == 0 {
+			return message, nil
+		}
+		return formatWithMap(message, mapping), nil
+	}
+
+	args := []interface{}{message}
+	if len(mapping) > 0 {
+		args = append(args, mapping)
+	}
+
+	result := e.callFunction(callable, args, nil, node.GetPosition())
+	if err, ok := result.(error); ok {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (e *Evaluator) invokeNGettext(node *nodes.Trans, singular, plural string, count interface{}, mapping map[string]interface{}) (interface{}, error) {
+	callable, err := e.resolveTransCallable("ngettext")
+	if err != nil {
+		return nil, err
+	}
+
+	if callable != nil {
+		args := []interface{}{singular, plural, count}
+		if len(mapping) > 0 {
+			args = append(args, mapping)
+		}
+		result := e.callFunction(callable, args, nil, node.GetPosition())
+		if err, ok := result.(error); ok {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	selected := plural
+	if count != nil {
+		if c, ok := toInt(count); ok && c == 1 {
+			selected = singular
+		}
+	}
+
+	if mapping == nil {
+		mapping = make(map[string]interface{})
+	}
+	if _, exists := mapping["count"]; !exists {
+		mapping["count"] = count
+	}
+
+	return formatWithMap(selected, mapping), nil
+}
+
+func (e *Evaluator) resolveTransCallable(names ...string) (interface{}, error) {
+	for _, name := range names {
+		value, err := e.ctx.Resolve(name)
+		if err != nil {
+			return nil, err
+		}
+		if value == nil || isUndefinedValue(value) {
+			continue
+		}
+		return value, nil
+	}
+	return nil, nil
+}
+
+type transPlaceholderState struct {
+	exprToName map[string]string
+	nameToExpr map[string]string
+	reserved   map[string]bool
+	counter    int
+}
+
+func newTransPlaceholderState() *transPlaceholderState {
+	return &transPlaceholderState{
+		exprToName: make(map[string]string),
+		nameToExpr: make(map[string]string),
+		reserved:   make(map[string]bool),
+	}
+}
+
+func (s *transPlaceholderState) reserve(name string) {
+	if name == "" {
+		return
+	}
+	s.reserved[name] = true
+}
+
+func (s *transPlaceholderState) nameFor(expr nodes.Expr) string {
+	key := expr.String()
+	if name, ok := s.exprToName[key]; ok {
+		return name
+	}
+
+	candidate := sanitizePlaceholderName(deriveTransCandidate(expr))
+	if candidate != "" {
+		if existing, ok := s.nameToExpr[candidate]; ok {
+			if existing == key {
+				s.exprToName[key] = candidate
+				return candidate
+			}
+		} else {
+			s.nameToExpr[candidate] = key
+			s.exprToName[key] = candidate
+			return candidate
+		}
+	}
+
+	for {
+		s.counter++
+		generated := fmt.Sprintf("value%d", s.counter)
+		if s.reserved[generated] {
+			continue
+		}
+		if _, exists := s.nameToExpr[generated]; exists {
+			continue
+		}
+		s.nameToExpr[generated] = key
+		s.exprToName[key] = generated
+		return generated
+	}
+}
+
+func deriveTransCandidate(expr nodes.Expr) string {
+	switch n := expr.(type) {
+	case *nodes.Name:
+		return n.Name
+	case *nodes.Getattr:
+		return n.Attr
+	case *nodes.Getitem:
+		return "item"
+	case *nodes.Const:
+		return "value"
+	default:
+		return ""
+	}
+}
+
+func sanitizePlaceholderName(name string) string {
+	if name == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	for i, r := range name {
+		if unicode.IsLetter(r) || r == '_' || (i > 0 && unicode.IsDigit(r)) {
+			builder.WriteRune(r)
+			continue
+		}
+		if i == 0 {
+			builder.WriteRune('_')
+		} else {
+			builder.WriteRune('_')
+		}
+	}
+
+	return builder.String()
 }
 
 func ensureNamespaceObject(name string, value interface{}, node *nodes.Namespace) (*Namespace, error) {

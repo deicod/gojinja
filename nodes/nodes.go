@@ -522,6 +522,44 @@ func (n *Namespace) String() string {
 	return fmt.Sprintf("Namespace(name=%s, value=%v, body=%v)", n.Name, n.Value, n.Body)
 }
 
+// Trans represents a translation block with optional pluralization support.
+type Trans struct {
+	BaseStmt
+	Singular  []Node          `json:"singular"`
+	Plural    []Node          `json:"plural"`
+	Variables map[string]Expr `json:"variables"`
+	CountExpr Expr            `json:"count_expr"`
+	CountName string          `json:"count_name"`
+}
+
+func (t *Trans) Accept(visitor Visitor) interface{} {
+	return visitor.Visit(t)
+}
+
+func (t *Trans) GetChildren() []Node {
+	var children []Node
+
+	if t.CountExpr != nil {
+		children = append(children, t.CountExpr)
+	}
+
+	for _, expr := range t.Variables {
+		if expr != nil {
+			children = append(children, expr)
+		}
+	}
+
+	children = append(children, t.Singular...)
+	children = append(children, t.Plural...)
+
+	return children
+}
+
+func (t *Trans) String() string {
+	return fmt.Sprintf("Trans(count=%v, count_name=%s, vars=%v, singular=%v, plural=%v)",
+		t.CountExpr, t.CountName, t.Variables, t.Singular, t.Plural)
+}
+
 // Block represents a block
 type Block struct {
 	BaseStmt
@@ -2397,49 +2435,6 @@ func (s *ScopedEvalContextModifier) String() string {
 
 func (s *ScopedEvalContextModifier) Type() string {
 	return "ScopedEvalContextModifier"
-}
-
-// Trans represents internationalization
-type Trans struct {
-	BaseStmt
-	Body      []Node    `json:"body"`
-	Variables []*Assign `json:"variables"`
-	Plural    Expr      `json:"plural"`
-	Count     Expr      `json:"count"`
-	Comments  []string  `json:"comments"`
-}
-
-func (t *Trans) Accept(visitor Visitor) interface{} {
-	return visitor.Visit(t)
-}
-
-func (t *Trans) GetChildren() []Node {
-	var children []Node
-
-	children = append(children, t.Body...)
-
-	for _, v := range t.Variables {
-		children = append(children, v)
-	}
-
-	if t.Plural != nil {
-		children = append(children, t.Plural)
-	}
-
-	if t.Count != nil {
-		children = append(children, t.Count)
-	}
-
-	return children
-}
-
-func (t *Trans) String() string {
-	return fmt.Sprintf("Trans(body=%v, variables=%v, plural=%v, count=%v, comments=%v)",
-		t.Body, t.Variables, t.Plural, t.Count, t.Comments)
-}
-
-func (t *Trans) Type() string {
-	return "Trans"
 }
 
 // Node utility functions
