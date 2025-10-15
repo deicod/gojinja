@@ -87,6 +87,41 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 	return "", NewTemplateNotFound(name, tried, os.ErrNotExist)
 }
 
+// TemplateModTime returns the modification time for the requested template.
+func (l *FileSystemLoader) TemplateModTime(name string) (time.Time, error) {
+	if name == "" {
+		return time.Time{}, errors.New("template name cannot be empty")
+	}
+
+	if filepath.IsAbs(name) {
+		info, err := os.Stat(name)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return info.ModTime(), nil
+	}
+
+	basePaths := l.SearchPath()
+	var lastErr error
+	for _, base := range basePaths {
+		fullPath := filepath.Join(base, name)
+		info, err := os.Stat(fullPath)
+		if err == nil {
+			return info.ModTime(), nil
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			lastErr = err
+			continue
+		}
+		return time.Time{}, err
+	}
+
+	if lastErr != nil {
+		return time.Time{}, lastErr
+	}
+	return time.Time{}, os.ErrNotExist
+}
+
 // SetSearchPath replaces the loader's search path list with the provided
 // values. A copy is stored so callers can mutate their slice without affecting
 // the loader.
@@ -154,6 +189,18 @@ func (l *MapLoader) Load(name string) (string, error) {
 		return "", NewTemplateNotFound(name, []string{name}, nil)
 	}
 	return template, nil
+}
+
+// TemplateModTime returns a stable modification marker for map-backed templates.
+func (l *MapLoader) TemplateModTime(name string) (time.Time, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	if _, ok := l.templates[name]; !ok {
+		return time.Time{}, NewTemplateNotFound(name, []string{name}, nil)
+	}
+	// Map-backed templates live purely in memory; return zero to signal no tracking.
+	return time.Time{}, nil
 }
 
 // Autoescape values
@@ -971,7 +1018,7 @@ func (env *Environment) NewTemplateFromAST(ast *nodes.Template, name string) (*T
 // LoadTemplate loads and parses a template by name
 func (env *Environment) LoadTemplate(name string) (*Template, error) {
 	// Check cache first
-	if tmpl, ok := env.cache.Get(name); ok {
+	if tmpl, ok := env.cache.Get(name, env.loader); ok {
 		return tmpl, nil
 	}
 
@@ -1085,7 +1132,8 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 	parentBlocks := make(map[string]*nodes.Block)
 
 	// Process inheritance
-	processedAST, err := env.processInheritanceWithContext(ast, name, make(map[string]bool), parentBlocks)
+	visited := make(map[string]bool)
+	processedAST, err := env.processInheritanceWithContext(ast, name, visited, parentBlocks)
 	if err != nil {
 		return nil, err
 	}
@@ -1103,9 +1151,20 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 		}
 	}
 
-	// Cache the template
+	// Cache the template along with tracked dependencies
 	dependencies := make(map[string]time.Time)
-	dependencies[name] = time.Now() // In a real implementation, get actual file mod time
+	if env.loader != nil {
+		for depName := range visited {
+			modTime, err := getModTime(env.loader, depName)
+			if err != nil {
+				continue
+			}
+			if modTime.IsZero() {
+				continue
+			}
+			dependencies[depName] = modTime
+		}
+	}
 	env.cache.Set(name, tmpl, dependencies)
 
 	return tmpl, nil
