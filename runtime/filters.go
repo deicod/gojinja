@@ -89,6 +89,7 @@ func (env *Environment) registerBuiltinFilters() {
 	env.AddFilter("reject", filterReject)
 	env.AddFilter("selectattr", filterSelectattr)
 	env.AddFilter("rejectattr", filterRejectattr)
+	env.AddFilter("do", filterDo)
 }
 
 // registerBuiltinTests registers all built-in tests with the environment
@@ -1026,6 +1027,13 @@ func filterSafe(ctx *Context, value interface{}, args ...interface{}) (interface
 	// In a full implementation, this would wrap the value in a Markup type
 	// For now, just return the value
 	return value, nil
+}
+
+func filterDo(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("do filter does not accept arguments")
+	}
+	return nil, nil
 }
 
 func filterEscape(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
