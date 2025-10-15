@@ -1,15 +1,16 @@
 package runtime
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
 // CacheEntry represents a cached template with metadata
 type CacheEntry struct {
-	Template    *Template
-	LoadedAt    time.Time
-	ExpiresAt   time.Time
+	Template     *Template
+	LoadedAt     time.Time
+	ExpiresAt    time.Time
 	Dependencies map[string]time.Time
 }
 
@@ -27,10 +28,29 @@ func (e *CacheEntry) IsValid(loader Loader) bool {
 		return false
 	}
 
+	if len(e.Dependencies) == 0 {
+		return true
+	}
+
+	if loader == nil {
+		return true
+	}
+
 	// Check if any dependencies have been modified
 	for depPath, modTime := range e.Dependencies {
+		if modTime.IsZero() {
+			continue
+		}
+
 		currentModTime, err := getModTime(loader, depPath)
-		if err != nil || currentModTime.After(modTime) {
+		if err != nil {
+			return false
+		}
+		if currentModTime.IsZero() {
+			// Loader could not determine the mod time; invalidate conservatively.
+			return false
+		}
+		if !currentModTime.Equal(modTime) {
 			return false
 		}
 	}
@@ -43,7 +63,7 @@ type TemplateCache struct {
 	entries map[string]*CacheEntry
 	mutex   sync.RWMutex
 	ttl     time.Duration
- maxSize int
+	maxSize int
 }
 
 // NewTemplateCache creates a new template cache
@@ -56,18 +76,17 @@ func NewTemplateCache(ttl time.Duration, maxSize int) *TemplateCache {
 }
 
 // Get retrieves a template from the cache
-func (c *TemplateCache) Get(name string) (*Template, bool) {
+func (c *TemplateCache) Get(name string, loader Loader) (*Template, bool) {
 	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
 	entry, ok := c.entries[name]
+	c.mutex.RUnlock()
+
 	if !ok {
 		return nil, false
 	}
 
-	// Check if entry is still valid
-	if !entry.IsValid(nil) { // loader not needed for basic validation
-		delete(c.entries, name)
+	if !entry.IsValid(loader) {
+		c.Delete(name)
 		return nil, false
 	}
 
@@ -90,11 +109,19 @@ func (c *TemplateCache) Set(name string, template *Template, dependencies map[st
 		expiresAt = now.Add(c.ttl)
 	}
 
+	var depsCopy map[string]time.Time
+	if len(dependencies) > 0 {
+		depsCopy = make(map[string]time.Time, len(dependencies))
+		for k, v := range dependencies {
+			depsCopy[k] = v
+		}
+	}
+
 	entry := &CacheEntry{
 		Template:     template,
 		LoadedAt:     now,
 		ExpiresAt:    expiresAt,
-		Dependencies: dependencies,
+		Dependencies: depsCopy,
 	}
 
 	c.entries[name] = entry
@@ -166,10 +193,19 @@ func (c *TemplateCache) evictOldest() {
 	}
 }
 
-// getModTime gets the modification time of a template file
-// This is a placeholder - in a real implementation, this would check file modification times
+// getModTime gets the modification time of a template file using the provided loader.
 func getModTime(loader Loader, path string) (time.Time, error) {
-	// For now, just return the current time
-	// In a real implementation, this would check the actual file modification time
-	return time.Now(), nil
+	if loader == nil {
+		return time.Time{}, errors.New("no loader configured")
+	}
+
+	type modTimeLoader interface {
+		TemplateModTime(name string) (time.Time, error)
+	}
+
+	if mt, ok := loader.(modTimeLoader); ok {
+		return mt.TemplateModTime(path)
+	}
+
+	return time.Time{}, errors.New("loader does not support modification times")
 }
