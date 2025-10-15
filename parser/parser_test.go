@@ -278,6 +278,25 @@ func TestParser_BasicStatements(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:     "SpacelessBlock",
+			template: `{% spaceless %}<div>  <span>{{ value }}</span>  </div>{% endspaceless %}`,
+			validate: func(t *testing.T, tmpl *nodes.Template) {
+				if len(tmpl.Body) != 1 {
+					t.Fatalf("expected 1 node in body, got %d", len(tmpl.Body))
+				}
+				block, ok := tmpl.Body[0].(*nodes.Spaceless)
+				if !ok {
+					t.Fatalf("expected Spaceless node, got %T", tmpl.Body[0])
+				}
+				if len(block.Body) != 1 {
+					t.Fatalf("expected spaceless body to contain 1 node, got %d", len(block.Body))
+				}
+				if _, ok := block.Body[0].(*nodes.Output); !ok {
+					t.Fatalf("expected spaceless body to render Output node, got %T", block.Body[0])
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
