@@ -4,13 +4,13 @@ Severity scale: **High** – breaks common templates or core semantics, **Medium
 
 | Area | Gap | Severity | Notes / References |
 | --- | --- | --- | --- |
-| Parser | Line-statement/line-comment prefixes configurable | Resolved | `Environment.SetLineStatementPrefix` / `SetLineCommentPrefix` wire parser + lexer support for compact control lines |
-| Runtime | Bytecode cache / template cache policy differs (no loader integration for search paths, mtime checks) | Low | `runtime/environment.go` cache lacks filesystem invalidation; affects production caching parity |
-| Runtime | Async rendering (`async for/with`, async filters/tests/globals) absent | Low | Python Jinja supports optional async; Go port executes synchronously |
-| Filters | Missing key filters (`filesizeformat`, `floatformat`, `escapejs`, `tojson`, `urlize`, `wordwrap`, `random`, etc.) | High | Many templates depend on these; inventory in `runtime/filters.go` lacks these implementations |
-| Tests | Missing comparison/type/pattern tests (`eq`, `ne`, `lt`, `integer`, `mapping`, `escaped`, `matching`, `search`, `infinite`, `nan`) | Medium | Limits existing templates/tests relying on `is` checks |
-| Globals | `namespace`, `class`, `gettext`/`ngettext`, debug helpers not exposed | Medium | Blocks advanced macro patterns and i18n usage |
-| Extensions | No extension API wiring | Medium | `parser.Environment` lacks registration for filters/tests/globals via extensions, limiting reuse of Jinja ecosystem |
-| Security | Sandbox policy incomplete (attribute/filter whitelisting) | Medium | `runtime/security.go` provides stubs but lacks enforcement parity; potential security divergence |
-| Errors | Exception hierarchy diverges; `TemplateNotFound`, `TemplatesNotFound` missing | Medium | Error handling compatibility needed for frameworks expecting canonical types |
-| Tooling | No conformance test harness vs. Jinja upstream suite | High | Without regression tests parity regressions go unnoticed; required for confidence |
+| Parser | Translation/i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`) absent | Medium | Required for Django-style templates and Flask-Babel integrations |
+| Parser | Async statements (`async for`, `async with`) unsupported | Medium | Needed for parity with `enable_async` templates |
+| Runtime | Bytecode cache and loader invalidation still missing | Low | `runtime/cache.go` only caches templates in-memory without mtime checks |
+| Runtime | Async rendering & streaming APIs unavailable | Medium | No equivalent to `generate()` or async render pipeline |
+| Filters | `sum` lacks `attribute` keyword / richer coercion | Low | `runtime/filters.go` sums numeric iterables only |
+| Macros | Keyword-only/varargs validation, exported template modules incomplete | Medium | Macro registry executes but skips argument contract checks |
+| Expressions | `environment()` / `context` helper expressions unavailable | Low | Limits porting complex filters/tests that need runtime access |
+| Security | Sandbox coverage for filters/tests/globals incomplete | Medium | Policy builder exists but enforcement gaps remain in `runtime/security.go` |
+| Errors | Stack traces lack full context chain seen in Python | Low | `runtime/errors.go` records position but not multi-frame call stacks |
+| Tooling | No upstream conformance harness synced from Jinja2 | High | Without regression tests parity regressions go unnoticed |

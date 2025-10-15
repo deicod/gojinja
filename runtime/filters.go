@@ -65,6 +65,9 @@ func (env *Environment) registerBuiltinFilters() {
 	env.AddFilter("slice", filterSlice)
 	env.AddFilter("batch", filterBatch)
 	env.AddFilter("groupby", filterGroupby)
+	env.AddFilter("dictsort", filterDictsort)
+	env.AddFilter("dictsortcasesensitive", filterDictsortCaseSensitive)
+	env.AddFilter("dictsortreversed", filterDictsortReversed)
 
 	// Utility filters
 	env.AddFilter("safe", filterSafe)
@@ -1019,6 +1022,18 @@ func filterGroupby(ctx *Context, value interface{}, args ...interface{}) (interf
 	default:
 		return nil, fmt.Errorf("groupby filter requires a sequence")
 	}
+}
+
+func filterDictsort(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+	return dictsortWithDefaults(value, args, dictsortDefaults{})
+}
+
+func filterDictsortCaseSensitive(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+	return dictsortWithDefaults(value, args, dictsortDefaults{caseSensitive: true})
+}
+
+func filterDictsortReversed(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+	return dictsortWithDefaults(value, args, dictsortDefaults{reverse: true})
 }
 
 // Utility filters
@@ -2217,6 +2232,178 @@ func compareNumeric(left, right interface{}, cmp func(a, b float64) bool) (bool,
 		return false, fmt.Errorf("numeric comparison requires numeric values")
 	}
 	return cmp(lf, rf), nil
+}
+
+type dictsortDefaults struct {
+	caseSensitive bool
+	reverse       bool
+}
+
+type dictsortPair struct {
+	key   interface{}
+	value interface{}
+}
+
+func dictsortWithDefaults(value interface{}, args []interface{}, defaults dictsortDefaults) (interface{}, error) {
+	kwargs, positional := extractKwargs(args)
+	args = positional
+
+	caseSensitive := defaults.caseSensitive
+	by := "key"
+	reverse := defaults.reverse
+
+	if len(args) > 0 {
+		caseSensitive = isTruthyValue(args[0])
+	}
+	if len(args) > 1 {
+		by = strings.ToLower(toString(args[1]))
+	}
+	if len(args) > 2 {
+		reverse = isTruthyValue(args[2])
+	}
+
+	if kwargs != nil {
+		if val, ok := kwargs["case_sensitive"]; ok {
+			caseSensitive = isTruthyValue(val)
+		}
+		if val, ok := kwargs["by"]; ok {
+			by = strings.ToLower(toString(val))
+		}
+		if val, ok := kwargs["reverse"]; ok {
+			reverse = isTruthyValue(val)
+		}
+	}
+
+	if by == "" {
+		by = "key"
+	}
+
+	switch by {
+	case "key", "value", "item":
+	default:
+		return nil, fmt.Errorf("dictsort filter received unknown 'by' value %q", by)
+	}
+
+	pairs, err := collectDictsortPairs(value)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.SliceStable(pairs, func(i, j int) bool {
+		var cmp int
+		switch by {
+		case "key":
+			cmp = compareValues(pairs[i].key, pairs[j].key, caseSensitive)
+		case "value":
+			cmp = compareValues(pairs[i].value, pairs[j].value, caseSensitive)
+		case "item":
+			cmp = compareValues(pairs[i].key, pairs[j].key, caseSensitive)
+			if cmp == 0 {
+				cmp = compareValues(pairs[i].value, pairs[j].value, caseSensitive)
+			}
+		}
+
+		if reverse {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	result := make([]interface{}, len(pairs))
+	for i, pair := range pairs {
+		result[i] = []interface{}{pair.key, pair.value}
+	}
+	return result, nil
+}
+
+func collectDictsortPairs(value interface{}) ([]dictsortPair, error) {
+	if value == nil || isUndefinedValue(value) {
+		return []dictsortPair{}, nil
+	}
+
+	switch v := value.(type) {
+	case map[string]interface{}:
+		items := make([]dictsortPair, 0, len(v))
+		for key, val := range v {
+			items = append(items, dictsortPair{key: key, value: val})
+		}
+		return items, nil
+	case map[interface{}]interface{}:
+		items := make([]dictsortPair, 0, len(v))
+		for key, val := range v {
+			items = append(items, dictsortPair{key: key, value: val})
+		}
+		return items, nil
+	case []interface{}:
+		items := make([]dictsortPair, 0, len(v))
+		for _, entry := range v {
+			key, val, err := dictsortPairFromValue(entry)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, dictsortPair{key: key, value: val})
+		}
+		return items, nil
+	}
+
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return nil, fmt.Errorf("dictsort filter requires a mapping or sequence of pairs")
+	}
+
+	switch rv.Kind() {
+	case reflect.Map:
+		items := make([]dictsortPair, 0, rv.Len())
+		for _, key := range rv.MapKeys() {
+			items = append(items, dictsortPair{key: key.Interface(), value: rv.MapIndex(key).Interface()})
+		}
+		return items, nil
+	case reflect.Slice, reflect.Array:
+		items := make([]dictsortPair, 0, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			key, val, err := dictsortPairFromValue(rv.Index(i).Interface())
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, dictsortPair{key: key, value: val})
+		}
+		return items, nil
+	default:
+		return nil, fmt.Errorf("dictsort filter requires a mapping or sequence of pairs")
+	}
+}
+
+func dictsortPairFromValue(value interface{}) (interface{}, interface{}, error) {
+	switch pair := value.(type) {
+	case []interface{}:
+		if len(pair) < 2 {
+			return nil, nil, fmt.Errorf("dictsort filter requires pairs of (key, value)")
+		}
+		return pair[0], pair[1], nil
+	case []string:
+		if len(pair) < 2 {
+			return nil, nil, fmt.Errorf("dictsort filter requires pairs of (key, value)")
+		}
+		return pair[0], pair[1], nil
+	case [2]interface{}:
+		return pair[0], pair[1], nil
+	case map[string]interface{}:
+		key, okKey := pair["key"]
+		val, okVal := pair["value"]
+		if okKey && okVal {
+			return key, val, nil
+		}
+	}
+
+	rv := reflect.ValueOf(value)
+	if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
+		if rv.Len() < 2 {
+			return nil, nil, fmt.Errorf("dictsort filter requires pairs of (key, value)")
+		}
+		return rv.Index(0).Interface(), rv.Index(1).Interface(), nil
+	}
+
+	return nil, nil, fmt.Errorf("dictsort filter requires a mapping or sequence of pairs")
 }
 
 // Utility functions shared across the runtime package

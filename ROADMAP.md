@@ -2,44 +2,42 @@
 
 ## Stage 1 – Core Compatibility (High Severity items)
 
-1. **Literal Blocks**
-   - Harden raw/verbatim handling for whitespace-control variants (e.g., `{%- raw -%}`) and keep alias coverage regression-tested.
-2. **Essential Runtime APIs**
-   - Wire autoescape configuration to accept bool, iterable of extensions, or callable, matching canonical behaviour.
-   - Align loader search-path behaviour with Python environment defaults (multiple paths, package loaders).
-3. **Built-ins Coverage**
-   - Add critical filters (`filesizeformat`, `floatformat`, `escapejs`, `urlize`, `wordwrap`, `random`, `tojson`/`fromjson`) and ensure argument parity.
-   - Fill high-impact tests (`equalto`, comparison predicates, numeric checks) and exercise them via unit tests.
-4. **Conformance Harness**
-   - Port a representative subset of Jinja’s official tests (statements, filters, runtime) and integrate into CI to prevent regressions.
+1. **Translation Tags**
+   - Implement `{% trans %}`, `{% pluralize %}`, and `{% blocktrans %}` with runtime pluralisation hooks.
+   - Add regression tests covering Django/Flask i18n templates.
+2. **Async Control Flow**
+   - Parse and evaluate `async for` / `async with` blocks under an `enable_async` switch.
+   - Provide no-op fallbacks in synchronous environments to ease migration.
+3. **Conformance Harness**
+   - Port a representative slice of the upstream Jinja test suite (statements, filters, runtime) and wire into CI.
+   - Track parity metrics per feature area to surface regressions quickly.
 
 ## Stage 2 – Advanced Runtime Alignment
 
-1. **Undefined Behaviour**
-   - Support additional undefined policies (e.g. ChainableUndefined, silent undefined toggles) and integrate with filters/tests behaviour.
-2. **Namespace & Macro Enhancements**
-   - Align macro argument validation and caller semantics (namespace helpers now include the declaration tag via `parser/statements.go` and runtime support).
-   - Improve macro registry caching and cross-template namespace reuse.
-3. **Extensions & Globals**
-   - Expose extension registration API so custom filters/tests/globals integrate cleanly.
-   - Add built-in globals (`namespace`, `_`, `gettext`, `ngettext`, `class`, debug helpers) with optional dependency injection for i18n.
-4. **Security & Error Parity**
-   - Flesh out sandbox enforcement (attribute/filter whitelists) and align error types with Python counterparts (`TemplateNotFound`, etc.).
+1. **Caching & Bytecode**
+   - Introduce a bytecode cache abstraction with filesystem mtime invalidation.
+   - Allow pluggable cache stores that mirror Jinja's `FileSystemBytecodeCache` and friends.
+2. **Async & Streaming Rendering**
+   - Add async-aware filters/tests/globals and expose streaming APIs akin to `Template.generate()`.
+   - Evaluate goroutine-based rendering helpers for concurrent output.
+3. **Undefined Policies & Expressions**
+   - Expand undefined variants (chainable, silent) and wire expression helpers like `environment()` / `context()`.
+4. **Security Hardening**
+   - Extend sandbox enforcement to cover the full filter/test/global matrix and improve violation diagnostics.
 
-## Stage 3 – Ecosystem & Optional Features
+## Stage 3 – Ecosystem Enhancements
 
-1. **Async & Streaming**
-   - Evaluate feasibility of async rendering (goroutines/futures) for parity with `enable_async`; provide no-op stubs if not planned.
-   - Support streaming responses and partial template rendering APIs.
-2. **Caching & Performance**
-   - Implement bytecode cache equivalent (in-memory / filesystem) with mtime checks; expose configuration knobs.
-3. **Whitespace & Line Statement Polish**
-   - Finalize `keep_trailing_newline`, line-statement prefix support, and parser-level whitespace trimming edge cases.
-4. **Documentation & Samples**
-   - Maintain parity docs comparing features (`PARITY.md`), update examples to cover new features, and publish migration guide for Python users.
+1. **Macro Contracts & Module Exports**
+   - Enforce keyword-only/varargs ordering and expose compiled template modules for reuse.
+2. **Filter Polish**
+   - Add remaining keyword behaviours (e.g. `sum(attribute=...)`) and richer coercions where Python allows them.
+3. **Whitespace Edge Cases**
+   - Cover nuanced `lstrip_blocks`/`keep_trailing_newline` scenarios with fixture-backed tests.
+4. **Documentation Refresh**
+   - Produce migration notes for Python users covering new features and behavioural differences.
 
 ## Stage 4 – Continuous Validation
 
-- Automate upstream test sync (periodic run against Jinja2 tests using embedded fixtures).
-- Track parity metrics (coverage percentages per feature category) and surface in CI dashboards.
-- Establish deprecation policy and semantic versioning aligned with Python releases.
+- Automate sync runs against upstream Jinja2 tests on a schedule.
+- Publish parity dashboards that highlight newly covered or regressed features.
+- Establish a deprecation policy aligned with Python releases.

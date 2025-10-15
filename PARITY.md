@@ -2,58 +2,64 @@
 
 ## Statements and Tags
 
-- Core keywords (`parser/parser.go:196`): `autoescape`, `block`, `break`, `continue`, `do`, `extends`, `for`, `if`, `import`, `include`, `from`, `macro`, `print`, `set`, `with`
-- Additional handlers (`parser/core.go:63`): `call` blocks, `filter` blocks, `spaceless` whitespace-collapsing blocks; tag stack and end-token validation mirror Python semantics
-- Control helpers: `elif`/`else` branches inside `if`, `else` inside `for`, scoped `block` with `required` flag (`parser/core.go:246`)
-- Comment/whitespace control: lexer honors dash/plus trimming syntax and environment flags `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline` (`lexer/lexer.go:682`, `runtime/environment.go:76`)
-- Raw/verbatim blocks (including whitespace-controlled variants) are preserved as literal template data in both parser and runtime
-- Inheritance flow matches block resolution and `super()` support (`runtime/template.go:64`)
-- Missing/partial tags: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`), async constructs (`async for/with`), and extension hook registration
+- Core control tags match Jinja2 semantics: `autoescape`, `block`, `break`, `continue`, `do`, `extends`, `for`, `if`, `import`, `include`, `from`, `macro`, `print`, `set`, and `with` are recognised by the parser (`parser/parser.go`).
+- Ancillary blocks – including `call`, `filter`, and `spaceless` – reuse Python's stack discipline and end-token validation (`parser/core.go`).
+- Raw/verbatim blocks, whitespace trimming markers, and comment controls all flow through the lexer with support for `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline`, and the configurable line statement/comment prefixes (`lexer/lexer.go`, `parser/parser.go`, `runtime/environment.go`).
+- Template inheritance implements block resolution and `super()` lookups in line with Jinja2 (`runtime/template.go`).
+- Extension hooks allow custom tags to be registered at the environment level, and participate in parsing (`runtime/environment.go`, `parser/parser.go`).
+
+**Remaining gaps**: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`) and async constructs (`async for` / `async with`) are not yet implemented.
 
 ## Expression & Assignment Support
 
-- Arithmetic and logical expressions (`nodes/nodes.go`): add/sub/mul/div/floor div/mod/pow, `and`, `or`, `not`, chained comparisons, ternary (`if ... else ...`)
-- Data structures: tuple, list, dict literals; slices; attribute/item access (`nodes.Getattr`, `nodes.Getitem`), namespace refs, tests (`is`)
-- Function calls filter/test pipelines, macro invocation, keyword/dynamic args; tuple unpacking assignment
-- Missing: explicit async/await expressions, constant folding helpers, keyword-only enforcement, environment()/context expression helpers, expression-level whitespace control parity
+- Arithmetic, comparison, logical operators, slicing, attribute/item access, test/filter pipes, and ternary expressions are available through the node tree (`nodes/nodes.go`).
+- Tuple/list/dict literals, macro calls, positional/keyword argument binding, unpacking assignment targets, and namespace references mirror Python Jinja behaviour (`parser/expressions.go`, `runtime/evaluator.go`).
 
-## Built-in Filters (`runtime/filters.go`)
+**Remaining gaps**: async/await expressions and helpers such as `environment()` or `context` expressions are still missing.
 
-Implemented: `abs`, `attr`, `batch`, `capitalize`, `center`, `default`, `escape`/`e`, `first`, `float`, `forceescape`, `format` (including dict/keyword arguments), `groupby`, `indent`, `int`, `join`, `last`, `length`, `list`, `lower`, `ltrim`, `map` (positional and `attribute=` form), `max`, `min`, `reverse`, `replace`, `reject`, `rejectattr`, `rtrim`, `safe`, `select`, `selectattr`, `slice`, `sort`, `strip`, `striptags`, `sum`, `title`, `trim`, `truncate`, `unique`, `upper`, `urlencode`, `urlize` (policies, extra schemes, email handling), `wordcount`, `xmlattr`
+## Built-in Filters
 
-Remaining/high priority: statement filters (`do`), completeness for collection helpers (`slice` column balancing edge cases), async-compatible filters, formatting utilities like `wordwrap`, and parity for environment-driven policies beyond `urlize`
+- String, list, numeric, and utility filters now cover the standard library, including `abs`, `attr`, `batch`, `capitalize`, `center`, `default`, `dictsort`, `dictsortcasesensitive`, `dictsortreversed`, `escape`/`e`, `escapejs`, `filesizeformat`, `filter`, `first`, `float`, `floatformat`, `forceescape`, `format`, `fromjson`, `groupby`, `indent`, `int`, `join`, `last`, `length`, `list`, `lower`, `ltrim`, `map`, `max`, `min`, `pprint`, `random`, `reject`, `rejectattr`, `replace`, `reverse`, `round`, `safe`, `select`, `selectattr`, `slice`, `sort`, `striptags`, `sum`, `title`, `trim`, `truncate`, `unique`, `upper`, `urlencode`, `urlize`, `wordcount`, `wordwrap`, `xmlattr`, `tojson`, and `do` (`runtime/filters.go`).
+- Keyword argument handling matches Jinja for filters such as `wordwrap`, `filesizeformat`, `urlize`, and the new `dictsort` family, and the environment newline settings flow into wrapping behaviour (`runtime/filters.go`).
 
-## Built-in Tests (`runtime/filters.go`)
+**Remaining gaps**: collection helpers such as `sum` still lack support for the `attribute` keyword and richer type coercions, and async-aware filters remain unimplemented.
 
-Implemented: `boolean`, `true`, `false`, `callable`, `defined`, `divisibleby`, `even`, `float`, `in`, `infinite`, `integer`, `iterable`, `list`, `lower`, `mapping`, `matching`, `nan`, `none`/`null`, `number`, `odd`, `sameas`, `search`, `sequence`, `string`, `startingwith`, `endingwith`, `containing`, `tuple`, `dict`, `undefined`, `upper`, `escaped`, `filter`, `test`, rich comparison aliases (`eq`, `ne`, `lt`, `le`, `gt`, `ge`, `equalto`)
+## Built-in Tests
 
-Remaining/high priority: symbolic operator aliases such as `>` / `<` rely on parser support and remain pending.
+- The environment registers numeric, sequence, mapping, callability, truthiness, string case, containment, regex, NaN/Inf, undefined, module, and rich comparison aliases (including the symbolic operators) (`runtime/filters.go`).
 
-## Global Functions (`runtime/environment.go`)
+**Remaining gaps**: async predicates are not yet available.
 
-Implemented: `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `_`/`gettext`/`ngettext`, runtime-injected `super`
+## Global Functions
 
-Missing/high priority: environment/context accessors
+- Built-in globals include `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `class`, `_`/`gettext`/`ngettext`, `debug`, `self`, `environment`, and the configurable `url_for` hook (`runtime/environment.go`).
+
+**Remaining gaps**: context/environment helper expressions still need to be wired directly into the expression language for full parity.
 
 ## Macros, Imports, and Namespaces
 
-- Macro declarations, call blocks, caller support, import/from import handled with macro registry (`runtime/macro.go`)
-- Namespaces tracked for nested imports; evaluation respects `with context` / `without context` toggles (`parser/statements.go`, `runtime/import.go`)
-- Missing: macro argument validation parity (keyword-only, positional varargs ordering), `contextfunction` semantics, `namespace()` global, template module exports, deferred evaluation for macro defaults
+- Macro declarations, caller blocks, imports (`import`/`from`), and namespace tracking are covered via the macro registry and import runtime (`parser/statements.go`, `runtime/macro.go`, `runtime/import.go`).
+- `with context` / `without context` toggles and `call` blocks propagate scope data appropriately (`runtime/evaluator.go`).
+
+**Remaining gaps**: macro argument validation (keyword-only ordering, default expression late binding) and template module exports remain TODOs.
 
 ## Whitespace & Data Control
 
-- Dash/plus trimming recognized for blocks/variables/comments (`lexer/lexer.go:682`)
-- Environment options exist but not exposed via public API toggles; default behavior may differ from Python Jinja
-- Missing: `keep_trailing_newline` enforcement, line-statement prefix configuration, whitespace preservation in `lstrip_blocks` edge cases
+- Environment switches `SetTrimBlocks`, `SetLStripBlocks`, `SetKeepTrailingNewline`, `SetLineStatementPrefix`, and `SetLineCommentPrefix` feed directly into the lexer/parser to match Jinja trimming semantics (`runtime/environment.go`, `parser/parser.go`).
+- Markup raw data is preserved and whitespace trimming honours dash/plus syntax across statements, variables, and comments (`lexer/lexer.go`).
+
+**Remaining gaps**: advanced edge cases around `lstrip_blocks` and preserving intentional blank lines still need coverage.
 
 ## Environment & Runtime
 
-- Loader abstraction (filesystem/map), template cache, security policy hooks, sandbox evaluator, context stack with loop tracking (`runtime/context.go`, `runtime/environment.go`, `runtime/sandbox.go`)
-- Template class supports inheritance, macro/block registries, autoescape decisions (`runtime/template.go`)
-- Missing/high priority: bytecode cache API, extension registration/loading, async rendering mode, streaming writer API, policy enforcement parity
+- File system and map loaders honour multi-path search order, provide `TemplateModTime`, and surface `TemplateNotFound` with tried paths (`runtime/environment.go`).
+- Template caching, macro registries, extension registration, autoescape selection, and sandbox-aware execution line up with Python's API surface (`runtime/environment.go`, `runtime/template.go`, `runtime/sandbox.go`).
+
+**Remaining gaps**: bytecode cache APIs, streaming writers, and async rendering modes are not yet implemented.
 
 ## Error Handling & Security
 
-- Errors capture position info and wrap causes (`runtime/errors.go`); security manager skeleton handles recursion/timeouts (`runtime/security.go`)
-- Missing: full exception hierarchy alignment (TemplateRuntimeError, TemplateNotFound, TemplatesNotFound), undefined variable strategy parity, attribute access controls, sandbox policy coverage for filters/tests/globals, line/column accuracy, context-rich stack traces
+- Runtime errors capture positions and wrap underlying causes, and dedicated `TemplateNotFoundError` / `TemplatesNotFoundError` types align with Jinja expectations (`runtime/errors.go`).
+- Security policy builders, sandbox environments, and policy enforcement hooks are in place for filter/test/global whitelisting and resource limits (`runtime/security.go`, `runtime/environment.go`).
+
+**Remaining gaps**: the sandbox still needs comprehensive filter/test coverage and richer stack traces for parity with Python's error diagnostics.
