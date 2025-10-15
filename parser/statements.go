@@ -199,6 +199,126 @@ func (p *Parser) ParseNamespace() (nodes.Node, error) {
 	return namespace, nil
 }
 
+// ParseTrans parses both trans and blocktrans statements.
+func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
+	token := p.stream.Next()
+	lineno := token.Line
+
+	trans := &nodes.Trans{
+		Variables: make(map[string]nodes.Expr),
+	}
+
+	// Parse optional variable assignments (including count expressions)
+	for {
+		current := p.stream.Peek()
+		if current.Type == lexer.TokenBlockEnd {
+			break
+		}
+
+		if current.Type == lexer.TokenComma {
+			p.stream.Next()
+			continue
+		}
+
+		if current.Type != lexer.TokenName {
+			return nil, p.Fail("expected name in trans tag", current.Line, &TemplateSyntaxError{})
+		}
+
+		nameToken := p.stream.Next()
+		name := nameToken.Value
+
+		switch name {
+		case "count":
+			if trans.CountExpr != nil {
+				return nil, p.Fail("count expression already defined", nameToken.Line, &TemplateSyntaxError{})
+			}
+
+			alias := "count"
+			var expr nodes.Expr
+
+			if p.SkipIf(lexer.TokenAssign) {
+				parsed, err := p.ParseExpression()
+				if err != nil {
+					return nil, err
+				}
+				expr = parsed
+			} else {
+				parsed, err := p.ParseExpression()
+				if err != nil {
+					return nil, err
+				}
+				expr = parsed
+
+				if p.SkipIfByName("as") {
+					aliasToken, err := p.Expect(lexer.TokenName)
+					if err != nil {
+						return nil, err
+					}
+					alias = aliasToken.Value
+				}
+			}
+
+			trans.CountExpr = expr
+			trans.CountName = alias
+
+		default:
+			if !p.SkipIf(lexer.TokenAssign) {
+				return nil, p.Fail("expected '=' in trans assignment", nameToken.Line, &TemplateSyntaxError{})
+			}
+
+			valueExpr, err := p.ParseExpression()
+			if err != nil {
+				return nil, err
+			}
+
+			trans.Variables[name] = valueExpr
+		}
+
+		// Consume optional comma between assignments
+		if p.SkipIf(lexer.TokenComma) {
+			continue
+		}
+	}
+
+	if trans.CountName == "" && trans.CountExpr != nil {
+		trans.CountName = "count"
+	}
+
+	singular, err := p.ParseStatements([]string{"name:pluralize", "name:endtrans"}, false)
+	if err != nil {
+		return nil, err
+	}
+	trans.Singular = singular
+
+	next := p.stream.Peek()
+	if next.Type != lexer.TokenName {
+		return nil, p.Fail("expected 'pluralize' or 'endtrans'", next.Line, &TemplateSyntaxError{})
+	}
+
+	if next.Value == "pluralize" {
+		if trans.CountExpr == nil {
+			return nil, p.Fail("pluralize is only allowed if a count is provided", next.Line, &TemplateSyntaxError{})
+		}
+		p.stream.Next()
+
+		plural, err := p.ParseStatements([]string{"name:endtrans"}, false)
+		if err != nil {
+			return nil, err
+		}
+		trans.Plural = plural
+		next = p.stream.Peek()
+	}
+
+	if next.Type != lexer.TokenName || next.Value != "endtrans" {
+		return nil, p.Fail("expected 'endtrans'", next.Line, &TemplateSyntaxError{})
+	}
+
+	p.stream.Next()
+
+	trans.SetPosition(nodes.NewPosition(lineno, 0))
+	return trans, nil
+}
+
 // ParseImport parses an import statement
 func (p *Parser) ParseImport() (nodes.Node, error) {
 	lineno := p.stream.Next().Line // consume 'import'

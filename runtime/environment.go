@@ -1546,7 +1546,8 @@ func replaceBlocksInNode(node nodes.Node, childBlockMap map[string]*nodes.Block)
 		n.Body = replaceBlocksInBody(n.Body, childBlockMap)
 		return n
 	case *nodes.Trans:
-		n.Body = replaceBlocksInBody(n.Body, childBlockMap)
+		n.Singular = replaceBlocksInBody(n.Singular, childBlockMap)
+		n.Plural = replaceBlocksInBody(n.Plural, childBlockMap)
 		return n
 	default:
 		return node
