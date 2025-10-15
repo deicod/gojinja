@@ -20,6 +20,15 @@ type Environment = runtime.Environment
 // Context represents the template rendering context
 type Context = runtime.Context
 
+// Loader represents a template loader
+type Loader = runtime.Loader
+
+// FileSystemLoader loads templates from the file system
+type FileSystemLoader = runtime.FileSystemLoader
+
+// MapLoader loads templates from an in-memory map
+type MapLoader = runtime.MapLoader
+
 // SecurityManager manages security policies
 type SecurityManager = runtime.SecurityManager
 
@@ -29,6 +38,16 @@ type SecurityContext = runtime.SecurityContext
 // NewEnvironment creates a new Jinja2 environment
 func NewEnvironment() *Environment {
 	return runtime.NewEnvironment()
+}
+
+// NewFileSystemLoader creates a new filesystem loader
+func NewFileSystemLoader(basePaths ...string) *FileSystemLoader {
+	return runtime.NewFileSystemLoader(basePaths...)
+}
+
+// NewMapLoader creates a new map loader
+func NewMapLoader(templates map[string]string) *MapLoader {
+	return runtime.NewMapLoader(templates)
 }
 
 // NewSecureEnvironment creates a new environment with default secure policy
@@ -99,6 +118,22 @@ type Error = runtime.Error
 
 // ErrorType represents the type of error
 type ErrorType = runtime.ErrorType
+
+// TemplateNotFoundError indicates a single missing template
+type TemplateNotFoundError = runtime.TemplateNotFoundError
+
+// TemplatesNotFoundError indicates all candidates were missing
+type TemplatesNotFoundError = runtime.TemplatesNotFoundError
+
+// NewTemplateNotFound creates a TemplateNotFoundError
+func NewTemplateNotFound(name string, tried []string, cause error) *TemplateNotFoundError {
+	return runtime.NewTemplateNotFound(name, tried, cause)
+}
+
+// NewTemplatesNotFound creates a TemplatesNotFoundError
+func NewTemplatesNotFound(names []string, tried []string, cause error) *TemplatesNotFoundError {
+	return runtime.NewTemplatesNotFound(names, tried, cause)
+}
 
 // Security access
 
