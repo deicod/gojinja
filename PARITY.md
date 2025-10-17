@@ -14,8 +14,9 @@
 
 - Arithmetic, comparison, logical operators, slicing, attribute/item access, test/filter pipes, and ternary expressions are available through the node tree (`nodes/nodes.go`).
 - Tuple/list/dict literals, macro calls, positional/keyword argument binding, unpacking assignment targets, and namespace references mirror Python Jinja behaviour (`parser/expressions.go`, `runtime/evaluator.go`).
+- Helper expressions for inspecting runtime state are provided via the builtin `environment()` and `context()` globals, returning the active environment and a snapshot of the scope (`runtime/environment.go`, `runtime/context.go`).
 
-**Remaining gaps**: async/await expressions and helpers such as `environment()` or `context` expressions are still missing.
+**Remaining gaps**: async/await expressions are still missing.
 
 ## Built-in Filters
 
@@ -32,9 +33,9 @@
 
 ## Global Functions
 
-- Built-in globals include `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `class`, `_`/`gettext`/`ngettext`, `debug`, `self`, `environment`, and the configurable `url_for` hook (`runtime/environment.go`).
+- Built-in globals include `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `class`, `_`/`gettext`/`ngettext`, `debug`, `self`, `context`, `environment`, and the configurable `url_for` hook (`runtime/environment.go`, `runtime/context.go`).
 
-**Remaining gaps**: context/environment helper expressions still need to be wired directly into the expression language for full parity.
+**Remaining gaps**: async-aware variants of these helpers remain TODO for full parity with `enable_async` templates.
 
 ## Macros, Imports, and Namespaces
 

@@ -1638,6 +1638,9 @@ func (env *Environment) registerBuiltinGlobals() {
 	env.AddGlobal("self", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
 		return ctx.selfFunc(args...)
 	}))
+	env.AddGlobal("context", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
+		return ctx.contextFunc(args...)
+	}))
 	env.AddGlobal("environment", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
 		return ctx.environmentFunc(args...)
 	}))

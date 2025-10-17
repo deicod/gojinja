@@ -21,7 +21,7 @@
    - Add async-aware filters/tests/globals and expose streaming APIs akin to `Template.generate()`.
    - Evaluate goroutine-based rendering helpers for concurrent output.
 3. **Undefined Policies & Expressions**
-   - Expand undefined variants (chainable, silent) and wire expression helpers like `environment()` / `context()`.
+   - Expand undefined variants (chainable, silent) and extend expression helpers beyond the shipped `environment()` / `context()` accessors.
 4. **Security Hardening**
    - Extend sandbox enforcement to cover the full filter/test/global matrix and improve violation diagnostics.
 

@@ -396,6 +396,23 @@ func TestSelfAndEnvironmentGlobals(t *testing.T) {
 	}
 }
 
+func TestContextHelperGlobal(t *testing.T) {
+	env := NewEnvironment()
+	tpl, err := env.ParseString("{{ context()['name'] }}|{{ environment().IsSandboxed() }}", "context_helper")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	res, err := tpl.ExecuteToString(map[string]interface{}{"name": "Gopher"})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+
+	if res != "Gopher|false" {
+		t.Fatalf("expected 'Gopher|false', got %q", res)
+	}
+}
+
 func TestKeepTrailingNewlineOption(t *testing.T) {
 	env := NewEnvironment()
 	tpl, err := env.ParseString("Hello\n", "trim_test")

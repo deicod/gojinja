@@ -891,6 +891,10 @@ func (ctx *Context) selfFunc(args ...interface{}) (interface{}, error) {
 	return ctx.current, nil
 }
 
+func (ctx *Context) contextFunc(args ...interface{}) (interface{}, error) {
+	return ctx.scope.All(), nil
+}
+
 func (ctx *Context) environmentFunc(args ...interface{}) (interface{}, error) {
 	return ctx.environment, nil
 }
