@@ -1300,7 +1300,15 @@ func (e *Evaluator) renderTransBody(body []nodes.Node, base map[string]interface
 func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map[string]interface{}) (interface{}, error) {
 	if node.HasContext {
 		if result, handled, err := e.callTransFunction(node, "pgettext", []interface{}{node.Context, message}, mapping); handled {
-			return result, err
+			if err != nil {
+				return nil, err
+			}
+			if len(mapping) > 0 {
+				if text, ok := result.(string); ok {
+					return formatWithMap(text, mapping), nil
+				}
+			}
+			return result, nil
 		} else if err != nil {
 			return nil, err
 		}
@@ -1332,7 +1340,15 @@ func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map
 func (e *Evaluator) invokeNGettext(node *nodes.Trans, singular, plural string, count interface{}, mapping map[string]interface{}) (interface{}, error) {
 	if node.HasContext {
 		if result, handled, err := e.callTransFunction(node, "npgettext", []interface{}{node.Context, singular, plural, count}, mapping); handled {
-			return result, err
+			if err != nil {
+				return nil, err
+			}
+			if len(mapping) > 0 {
+				if text, ok := result.(string); ok {
+					return formatWithMap(text, mapping), nil
+				}
+			}
+			return result, nil
 		} else if err != nil {
 			return nil, err
 		}
