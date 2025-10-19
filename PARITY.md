@@ -7,8 +7,9 @@
 - Raw/verbatim blocks, whitespace trimming markers, and comment controls all flow through the lexer with support for `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline`, and the configurable line statement/comment prefixes (`lexer/lexer.go`, `parser/parser.go`, `runtime/environment.go`).
 - Template inheritance implements block resolution and `super()` lookups in line with Jinja2 (`runtime/template.go`).
 - Extension hooks allow custom tags to be registered at the environment level, and participate in parsing (`runtime/environment.go`, `parser/parser.go`).
+- Translation tags (`{% trans %}`/`{% blocktrans %}`) mirror Jinja2's context, trimming, and pluralisation semantics with runtime gettext/npgettext dispatch (`parser/statements.go`, `runtime/evaluator.go`).
 
-**Remaining gaps**: i18n tags (`{% trans %}`, `{% pluralize %}`, `{% blocktrans %}`) and async constructs (`async for` / `async with`) are not yet implemented.
+**Remaining gaps**: async constructs (`async for` / `async with`) are not yet implemented.
 
 ## Expression & Assignment Support
 

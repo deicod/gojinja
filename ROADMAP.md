@@ -2,9 +2,9 @@
 
 ## Stage 1 – Core Compatibility (High Severity items)
 
-1. **Translation Tags**
-   - Implement `{% trans %}`, `{% pluralize %}`, and `{% blocktrans %}` with runtime pluralisation hooks.
-   - Add regression tests covering Django/Flask i18n templates.
+1. **Translation Tags** *(Completed)*
+   - `{% trans %}`, `{% pluralize %}`, and `{% blocktrans %}` honour context strings, trimming toggles, and pluralisation hooks at runtime.
+   - Regression tests cover translation assignments, plural aliases, trimming, and contextual gettext usage.
 2. **Async Control Flow**
    - Parse and evaluate `async for` / `async with` blocks under an `enable_async` switch.
    - Provide no-op fallbacks in synchronous environments to ease migration.

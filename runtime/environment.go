@@ -281,6 +281,7 @@ func NewEnvironment() *Environment {
 	env.policies["urlize.rel"] = "noopener"
 	env.policies["urlize.target"] = nil
 	env.policies["urlize.extra_schemes"] = nil
+	env.policies["ext.i18n.trimmed"] = false
 
 	// Register built-in filters
 	env.registerBuiltinFilters()
@@ -1632,6 +1633,12 @@ func (env *Environment) registerBuiltinGlobals() {
 	env.AddGlobal("ngettext", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
 		return ctx.ngettextFunc(args...)
 	}))
+	env.AddGlobal("pgettext", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
+		return ctx.pgettextFunc(args...)
+	}))
+	env.AddGlobal("npgettext", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
+		return ctx.npgettextFunc(args...)
+	}))
 	env.AddGlobal("debug", GlobalFunc(func(ctx *Context, args ...interface{}) (interface{}, error) {
 		return ctx.debugFunc(args...)
 	}))
@@ -1654,4 +1661,11 @@ func (env *Environment) SetURLFor(fn GlobalFunc) {
 	env.mu.Lock()
 	defer env.mu.Unlock()
 	env.urlFor = fn
+}
+
+// SetI18nTrimmed configures the default trimming behaviour for trans blocks.
+func (env *Environment) SetI18nTrimmed(trimmed bool) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.policies["ext.i18n.trimmed"] = trimmed
 }
