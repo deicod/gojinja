@@ -46,7 +46,10 @@ type Evaluator struct {
 	securityChecks bool
 }
 
-var spacelessBetweenTags = regexp.MustCompile(`>\s+<`)
+var (
+	spacelessBetweenTags = regexp.MustCompile(`>\s+<`)
+	transWhitespace      = regexp.MustCompile(`\s+`)
+)
 
 // NewEvaluator creates a new evaluator
 func NewEvaluator(ctx *Context) *Evaluator {
@@ -1176,6 +1179,20 @@ func (e *Evaluator) visitTrans(node *nodes.Trans) interface{} {
 		return err
 	}
 
+	trimmed := node.Trimmed
+	if !node.TrimmedSet && e.ctx.environment != nil {
+		e.ctx.environment.mu.RLock()
+		if policy, ok := e.ctx.environment.policies["ext.i18n.trimmed"]; ok {
+			if val, ok := policy.(bool); ok {
+				trimmed = val
+			}
+		}
+		e.ctx.environment.mu.RUnlock()
+	}
+	if trimmed {
+		singularMsg = trimTransWhitespace(singularMsg)
+	}
+
 	allVars := singularVars
 
 	if node.CountExpr != nil && len(node.Plural) > 0 {
@@ -1185,6 +1202,9 @@ func (e *Evaluator) visitTrans(node *nodes.Trans) interface{} {
 		}
 		for k, v := range pluralVars {
 			allVars[k] = v
+		}
+		if trimmed {
+			pluralMsg = trimTransWhitespace(pluralMsg)
 		}
 		if countValue != nil {
 			allVars[countName] = countValue
@@ -1278,6 +1298,22 @@ func (e *Evaluator) renderTransBody(body []nodes.Node, base map[string]interface
 }
 
 func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map[string]interface{}) (interface{}, error) {
+	if node.HasContext {
+		if result, handled, err := e.callTransFunction(node, "pgettext", []interface{}{node.Context, message}, mapping); handled {
+			if err != nil {
+				return nil, err
+			}
+			if len(mapping) > 0 {
+				if text, ok := result.(string); ok {
+					return formatWithMap(text, mapping), nil
+				}
+			}
+			return result, nil
+		} else if err != nil {
+			return nil, err
+		}
+	}
+
 	callable, err := e.resolveTransCallable("_", "gettext")
 	if err != nil {
 		return nil, err
@@ -1302,6 +1338,22 @@ func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map
 }
 
 func (e *Evaluator) invokeNGettext(node *nodes.Trans, singular, plural string, count interface{}, mapping map[string]interface{}) (interface{}, error) {
+	if node.HasContext {
+		if result, handled, err := e.callTransFunction(node, "npgettext", []interface{}{node.Context, singular, plural, count}, mapping); handled {
+			if err != nil {
+				return nil, err
+			}
+			if len(mapping) > 0 {
+				if text, ok := result.(string); ok {
+					return formatWithMap(text, mapping), nil
+				}
+			}
+			return result, nil
+		} else if err != nil {
+			return nil, err
+		}
+	}
+
 	callable, err := e.resolveTransCallable("ngettext")
 	if err != nil {
 		return nil, err
@@ -1348,6 +1400,27 @@ func (e *Evaluator) resolveTransCallable(names ...string) (interface{}, error) {
 		return value, nil
 	}
 	return nil, nil
+}
+
+func (e *Evaluator) callTransFunction(node *nodes.Trans, name string, args []interface{}, mapping map[string]interface{}) (interface{}, bool, error) {
+	callable, err := e.resolveTransCallable(name)
+	if err != nil {
+		return nil, true, err
+	}
+	if callable == nil {
+		return nil, false, nil
+	}
+
+	callArgs := append([]interface{}{}, args...)
+	if len(mapping) > 0 {
+		callArgs = append(callArgs, mapping)
+	}
+
+	result := e.callFunction(callable, callArgs, nil, node.GetPosition())
+	if err, ok := result.(error); ok {
+		return nil, true, err
+	}
+	return result, true, nil
 }
 
 type transPlaceholderState struct {
@@ -1441,6 +1514,14 @@ func sanitizePlaceholderName(name string) string {
 	}
 
 	return builder.String()
+}
+
+func trimTransWhitespace(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+	return transWhitespace.ReplaceAllString(trimmed, " ")
 }
 
 func ensureNamespaceObject(name string, value interface{}, node *nodes.Namespace) (*Namespace, error) {

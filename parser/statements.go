@@ -208,10 +208,22 @@ func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
 		Variables: make(map[string]nodes.Expr),
 	}
 
+	// Optional context string: {% trans "context" %}
+	if p.stream.Peek().Type == lexer.TokenString {
+		ctxToken := p.stream.Next()
+		trans.Context = ctxToken.Value
+		trans.HasContext = true
+	}
+
 	// Parse optional variable assignments (including count expressions)
 	for {
 		current := p.stream.Peek()
 		if current.Type == lexer.TokenBlockEnd {
+			break
+		}
+
+		if current.Type == lexer.TokenColon {
+			p.stream.Next()
 			break
 		}
 
@@ -228,6 +240,13 @@ func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
 		name := nameToken.Value
 
 		switch name {
+		case "trimmed", "notrimmed":
+			if trans.TrimmedSet {
+				return nil, p.Fail("trimmed or notrimmed specified multiple times", nameToken.Line, &TemplateSyntaxError{})
+			}
+			trans.TrimmedSet = true
+			trans.Trimmed = name == "trimmed"
+			continue
 		case "count":
 			if trans.CountExpr != nil {
 				return nil, p.Fail("count expression already defined", nameToken.Line, &TemplateSyntaxError{})
@@ -261,23 +280,32 @@ func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
 			trans.CountExpr = expr
 			trans.CountName = alias
 
-		default:
-			if !p.SkipIf(lexer.TokenAssign) {
-				return nil, p.Fail("expected '=' in trans assignment", nameToken.Line, &TemplateSyntaxError{})
+			if alias != "" && alias != "count" {
+				if _, exists := trans.Variables[alias]; !exists {
+					trans.Variables[alias] = expr
+				}
 			}
+			continue
+		}
 
-			valueExpr, err := p.ParseExpression()
+		var valueExpr nodes.Expr
+		if p.SkipIf(lexer.TokenAssign) {
+			parsed, err := p.ParseExpression()
 			if err != nil {
 				return nil, err
 			}
-
-			trans.Variables[name] = valueExpr
+			valueExpr = parsed
+		} else {
+			nameExpr := &nodes.Name{Name: name, Ctx: nodes.CtxLoad}
+			nameExpr.SetPosition(nodes.NewPosition(nameToken.Line, 0))
+			valueExpr = nameExpr
 		}
 
-		// Consume optional comma between assignments
-		if p.SkipIf(lexer.TokenComma) {
-			continue
+		if _, exists := trans.Variables[name]; exists {
+			return nil, p.Fail(fmt.Sprintf("trans variable %q defined multiple times", name), nameToken.Line, &TemplateAssertionError{})
 		}
+
+		trans.Variables[name] = valueExpr
 	}
 
 	if trans.CountName == "" && trans.CountExpr != nil {
@@ -296,10 +324,31 @@ func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
 	}
 
 	if next.Value == "pluralize" {
+		p.stream.Next()
+
+		if p.stream.Peek().Type == lexer.TokenName {
+			aliasToken, err := p.Expect(lexer.TokenName)
+			if err != nil {
+				return nil, err
+			}
+			alias := aliasToken.Value
+
+			if expr, ok := trans.Variables[alias]; ok {
+				trans.CountExpr = expr
+				trans.CountName = alias
+			} else if trans.CountExpr != nil && (alias == trans.CountName || (alias == "count" && trans.CountName == "")) {
+				trans.CountName = alias
+			} else {
+				nameExpr := &nodes.Name{Name: alias, Ctx: nodes.CtxLoad}
+				nameExpr.SetPosition(nodes.NewPosition(aliasToken.Line, 0))
+				trans.CountExpr = nameExpr
+				trans.CountName = alias
+			}
+		}
+
 		if trans.CountExpr == nil {
 			return nil, p.Fail("pluralize is only allowed if a count is provided", next.Line, &TemplateSyntaxError{})
 		}
-		p.stream.Next()
 
 		plural, err := p.ParseStatements([]string{"name:endtrans"}, false)
 		if err != nil {

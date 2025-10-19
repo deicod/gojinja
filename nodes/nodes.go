@@ -525,11 +525,15 @@ func (n *Namespace) String() string {
 // Trans represents a translation block with optional pluralization support.
 type Trans struct {
 	BaseStmt
-	Singular  []Node          `json:"singular"`
-	Plural    []Node          `json:"plural"`
-	Variables map[string]Expr `json:"variables"`
-	CountExpr Expr            `json:"count_expr"`
-	CountName string          `json:"count_name"`
+	Singular   []Node          `json:"singular"`
+	Plural     []Node          `json:"plural"`
+	Variables  map[string]Expr `json:"variables"`
+	CountExpr  Expr            `json:"count_expr"`
+	CountName  string          `json:"count_name"`
+	Context    string          `json:"context"`
+	HasContext bool            `json:"has_context"`
+	Trimmed    bool            `json:"trimmed"`
+	TrimmedSet bool            `json:"trimmed_set"`
 }
 
 func (t *Trans) Accept(visitor Visitor) interface{} {
@@ -556,8 +560,8 @@ func (t *Trans) GetChildren() []Node {
 }
 
 func (t *Trans) String() string {
-	return fmt.Sprintf("Trans(count=%v, count_name=%s, vars=%v, singular=%v, plural=%v)",
-		t.CountExpr, t.CountName, t.Variables, t.Singular, t.Plural)
+	return fmt.Sprintf("Trans(count=%v, count_name=%s, context=%q, trimmed=%t, vars=%v, singular=%v, plural=%v)",
+		t.CountExpr, t.CountName, t.Context, t.Trimmed, t.Variables, t.Singular, t.Plural)
 }
 
 // Block represents a block

@@ -952,6 +952,54 @@ func (ctx *Context) ngettextFunc(args ...interface{}) (interface{}, error) {
 	return fmt.Sprintf(choice, count), nil
 }
 
+func (ctx *Context) pgettextFunc(args ...interface{}) (interface{}, error) {
+	if len(args) < 2 {
+		return nil, NewError(ErrorTypeTemplate, "pgettext() requires context and message", nodes.Position{}, nil)
+	}
+
+	message := toString(args[1])
+	if len(args) == 2 {
+		return message, nil
+	}
+
+	replacements := args[2]
+	if mapping, ok := toStringInterfaceMap(replacements); ok {
+		return formatWithMap(message, mapping), nil
+	}
+
+	return fmt.Sprintf(message, args[2:]...), nil
+}
+
+func (ctx *Context) npgettextFunc(args ...interface{}) (interface{}, error) {
+	if len(args) < 4 {
+		return nil, NewError(ErrorTypeTemplate, "npgettext() requires context, singular, plural, count", nodes.Position{}, nil)
+	}
+
+	singular := toString(args[1])
+	plural := toString(args[2])
+	count, ok := toInt(args[3])
+	if !ok {
+		return nil, NewError(ErrorTypeTemplate, "npgettext() count must be numeric", nodes.Position{}, nil)
+	}
+
+	choice := plural
+	if count == 1 {
+		choice = singular
+	}
+
+	if len(args) > 4 {
+		replacements := args[4]
+		if mapping, ok := toStringInterfaceMap(replacements); ok {
+			mapping["count"] = count
+			return formatWithMap(choice, mapping), nil
+		}
+		vals := append([]interface{}{count}, args[5:]...)
+		return fmt.Sprintf(choice, vals...), nil
+	}
+
+	return fmt.Sprintf(choice, count), nil
+}
+
 func formatWithMap(message string, mapping map[string]interface{}) string {
 	result := message
 	for key, value := range mapping {
