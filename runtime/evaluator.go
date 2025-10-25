@@ -796,23 +796,199 @@ func (e *Evaluator) visitCallBlock(node *nodes.CallBlock) interface{} {
 		blockCtx.PushScope()
 		defer blockCtx.PopScope()
 
-		for i, param := range node.Args {
-			if i < len(args) {
-				blockCtx.Set(param.Name, args[i])
-			} else if i < len(node.Defaults) {
-				value := NewEvaluator(blockCtx).Evaluate(node.Defaults[i])
-				if err, ok := value.(error); ok {
-					return "", err
+		callArgs := append([]interface{}(nil), args...)
+		var callKwargs map[string]interface{}
+		if len(callArgs) > 0 {
+			if kw, ok := callArgs[len(callArgs)-1].(map[string]interface{}); ok {
+				useKwargs := len(node.KwonlyArgs) > 0 || node.KwArg != nil
+				if !useKwargs {
+					for _, param := range node.Args {
+						if _, exists := kw[param.Name]; exists {
+							useKwargs = true
+							break
+						}
+					}
 				}
-				blockCtx.Set(param.Name, value)
-			} else {
-				blockCtx.Set(param.Name, nil)
+				if !useKwargs {
+					for _, param := range node.KwonlyArgs {
+						if _, exists := kw[param.Name]; exists {
+							useKwargs = true
+							break
+						}
+					}
+				}
+
+				if useKwargs {
+					callKwargs = make(map[string]interface{}, len(kw))
+					for k, v := range kw {
+						callKwargs[k] = v
+					}
+					callArgs = callArgs[:len(callArgs)-1]
+				}
+			}
+		}
+		if callKwargs == nil {
+			callKwargs = make(map[string]interface{})
+		}
+
+		argEvaluator := NewEvaluator(blockCtx)
+
+		boundValues := make(map[string]interface{})
+		positionalCount := len(node.Args)
+		defaultsCount := len(node.Defaults)
+		defaultStart := positionalCount - defaultsCount
+		if defaultStart < 0 {
+			defaultStart = 0
+		}
+
+		positionalIndex := make(map[string]int, positionalCount)
+		for idx, param := range node.Args {
+			positionalIndex[param.Name] = idx
+			if idx < len(callArgs) {
+				boundValues[param.Name] = callArgs[idx]
 			}
 		}
 
-		evaluator := NewEvaluator(blockCtx)
+		keywordOnlySet := make(map[string]struct{}, len(node.KwonlyArgs))
+		for _, param := range node.KwonlyArgs {
+			keywordOnlySet[param.Name] = struct{}{}
+		}
+
+		extraKeywords := make(map[string]interface{})
+		for key, value := range callKwargs {
+			if key == "__caller" {
+				continue
+			}
+
+			if idx, ok := positionalIndex[key]; ok {
+				paramName := node.Args[idx].Name
+				if _, exists := boundValues[paramName]; exists {
+					return "", NewError(ErrorTypeTemplate,
+						fmt.Sprintf("multiple values for argument '%s'", paramName),
+						node.GetPosition(), node)
+				}
+				boundValues[paramName] = value
+				continue
+			}
+
+			if _, ok := keywordOnlySet[key]; ok {
+				if _, exists := boundValues[key]; exists {
+					return "", NewError(ErrorTypeTemplate,
+						fmt.Sprintf("multiple values for argument '%s'", key),
+						node.GetPosition(), node)
+				}
+				boundValues[key] = value
+				continue
+			}
+
+			extraKeywords[key] = value
+		}
+
+		if len(callArgs) > positionalCount {
+			if node.VarArg == nil {
+				return "", NewError(ErrorTypeTemplate,
+					fmt.Sprintf("too many positional arguments (got %d, expected at most %d)",
+						len(callArgs), positionalCount),
+					node.GetPosition(), node)
+			}
+			extras := make([]interface{}, len(callArgs)-positionalCount)
+			copy(extras, callArgs[positionalCount:])
+			boundValues[node.VarArg.Name] = extras
+		} else if node.VarArg != nil {
+			boundValues[node.VarArg.Name] = []interface{}{}
+		}
+
+		for idx, param := range node.Args {
+			if _, exists := boundValues[param.Name]; exists {
+				continue
+			}
+
+			defaultIndex := idx - defaultStart
+			if defaultIndex >= 0 && defaultIndex < defaultsCount {
+				defaultExpr := node.Defaults[defaultIndex]
+				if defaultExpr != nil {
+					value := argEvaluator.Evaluate(defaultExpr)
+					if err, ok := value.(error); ok {
+						return "", err
+					}
+					boundValues[param.Name] = value
+				} else {
+					boundValues[param.Name] = nil
+				}
+				continue
+			}
+
+			return "", NewError(ErrorTypeTemplate,
+				fmt.Sprintf("missing required argument '%s'", param.Name),
+				node.GetPosition(), node)
+		}
+
+		for _, param := range node.KwonlyArgs {
+			if _, exists := boundValues[param.Name]; exists {
+				continue
+			}
+
+			if node.KwDefaults != nil {
+				if defaultExpr, ok := node.KwDefaults[param.Name]; ok {
+					if defaultExpr != nil {
+						value := argEvaluator.Evaluate(defaultExpr)
+						if err, ok := value.(error); ok {
+							return "", err
+						}
+						boundValues[param.Name] = value
+					} else {
+						boundValues[param.Name] = nil
+					}
+					continue
+				}
+			}
+
+			return "", NewError(ErrorTypeTemplate,
+				fmt.Sprintf("missing required argument '%s'", param.Name),
+				node.GetPosition(), node)
+		}
+
+		if node.KwArg != nil {
+			if extraKeywords == nil {
+				extraKeywords = make(map[string]interface{})
+			}
+			boundValues[node.KwArg.Name] = extraKeywords
+		} else if len(extraKeywords) > 0 {
+			var unexpected string
+			for key := range extraKeywords {
+				unexpected = key
+				break
+			}
+			return "", NewError(ErrorTypeTemplate,
+				fmt.Sprintf("unexpected keyword argument '%s'", unexpected),
+				node.GetPosition(), node)
+		}
+
+		for _, param := range node.Args {
+			blockCtx.Set(param.Name, boundValues[param.Name])
+		}
+
+		if node.VarArg != nil {
+			if value, exists := boundValues[node.VarArg.Name]; exists {
+				blockCtx.Set(node.VarArg.Name, value)
+			}
+		}
+
+		for _, param := range node.KwonlyArgs {
+			blockCtx.Set(param.Name, boundValues[param.Name])
+		}
+
+		if node.KwArg != nil {
+			if value, exists := boundValues[node.KwArg.Name]; exists {
+				blockCtx.Set(node.KwArg.Name, value)
+			} else {
+				blockCtx.Set(node.KwArg.Name, map[string]interface{}{})
+			}
+		}
+
+		bodyEvaluator := NewEvaluator(blockCtx)
 		for _, stmt := range node.Body {
-			if result := evaluator.Evaluate(stmt); result != nil {
+			if result := bodyEvaluator.Evaluate(stmt); result != nil {
 				if err, ok := result.(error); ok {
 					return nil, err
 				}

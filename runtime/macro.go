@@ -12,12 +12,13 @@ import (
 // Macro represents a compiled Jinja2 macro
 type Macro struct {
 	// Basic macro information
-	Name      string
-	Arguments []*MacroArgument
-	Defaults  []nodes.Expr
-	Body      []nodes.Node
-	Template  *Template
-	Position  nodes.Position
+	Name       string
+	Arguments  []*MacroArgument
+	Defaults   []nodes.Expr
+	KwDefaults map[string]nodes.Expr
+	Body       []nodes.Node
+	Template   *Template
+	Position   nodes.Position
 
 	// Execution context
 	Caller      *MacroCaller
@@ -30,11 +31,12 @@ type Macro struct {
 
 // MacroArgument represents a macro argument with optional default
 type MacroArgument struct {
-	Name       string
-	Default    interface{}
-	HasDefault bool
-	Variadic   bool
-	Keyword    bool
+	Name        string
+	Default     interface{}
+	HasDefault  bool
+	Variadic    bool
+	Keyword     bool
+	KeywordOnly bool
 }
 
 // MacroCaller represents the caller context for a macro
@@ -111,6 +113,22 @@ func NewMacro(macroNode *nodes.Macro, template *Template) *Macro {
 		})
 	}
 
+	if len(macroNode.KwonlyArgs) > 0 {
+		for _, arg := range macroNode.KwonlyArgs {
+			kwArg := &MacroArgument{
+				Name:        arg.Name,
+				KeywordOnly: true,
+			}
+			if macroNode.KwDefaults != nil {
+				if def, ok := macroNode.KwDefaults[arg.Name]; ok {
+					kwArg.HasDefault = def != nil
+					kwArg.Default = def
+				}
+			}
+			args = append(args, kwArg)
+		}
+	}
+
 	if macroNode.KwArg != nil {
 		args = append(args, &MacroArgument{
 			Name:    macroNode.KwArg.Name,
@@ -119,12 +137,13 @@ func NewMacro(macroNode *nodes.Macro, template *Template) *Macro {
 	}
 
 	macro := &Macro{
-		Name:      macroNode.Name,
-		Arguments: args,
-		Defaults:  macroNode.Defaults,
-		Body:      macroNode.Body,
-		Template:  template,
-		Position:  macroNode.GetPosition(),
+		Name:       macroNode.Name,
+		Arguments:  args,
+		Defaults:   macroNode.Defaults,
+		KwDefaults: macroNode.KwDefaults,
+		Body:       macroNode.Body,
+		Template:   template,
+		Position:   macroNode.GetPosition(),
 	}
 
 	return macro
@@ -324,6 +343,7 @@ func (m *Macro) bindArguments(ctx *Context, args []interface{}, kwargs map[strin
 
 	argValues := make(map[string]interface{})
 	var positionalArgs []*MacroArgument
+	var keywordOnlyArgs []*MacroArgument
 	var variadicArg *MacroArgument
 	var keywordCollector *MacroArgument
 
@@ -333,6 +353,8 @@ func (m *Macro) bindArguments(ctx *Context, args []interface{}, kwargs map[strin
 			variadicArg = arg
 		case arg.Keyword:
 			keywordCollector = arg
+		case arg.KeywordOnly:
+			keywordOnlyArgs = append(keywordOnlyArgs, arg)
 		default:
 			positionalArgs = append(positionalArgs, arg)
 		}
@@ -413,6 +435,27 @@ func (m *Macro) bindArguments(ctx *Context, args []interface{}, kwargs map[strin
 			m.Position, nil)
 	}
 
+	// Apply defaults for keyword-only parameters and ensure they are provided
+	for _, param := range keywordOnlyArgs {
+		if _, exists := argValues[param.Name]; exists {
+			continue
+		}
+
+		if param.HasDefault && param.Default != nil {
+			evaluator := NewEvaluator(ctx)
+			defaultValue := evaluator.Evaluate(param.Default.(nodes.Expr))
+			if err, ok := defaultValue.(error); ok {
+				return err
+			}
+			argValues[param.Name] = defaultValue
+			continue
+		}
+
+		return NewMacroError(m.Name,
+			fmt.Sprintf("missing required argument '%s'", param.Name),
+			m.Position, nil)
+	}
+
 	for name, value := range argValues {
 		ctx.Set(name, value)
 	}
@@ -472,6 +515,12 @@ func (m *Macro) GetChildren() []nodes.Node {
 
 	// Add defaults as children
 	for _, def := range m.Defaults {
+		if def != nil {
+			children = append(children, def)
+		}
+	}
+
+	for _, def := range m.KwDefaults {
 		if def != nil {
 			children = append(children, def)
 		}
@@ -564,6 +613,7 @@ func (m *Macro) ValidateCall(args []interface{}, kwargs map[string]interface{}) 
 	}
 
 	var positionalArgs []*MacroArgument
+	var keywordOnlyArgs []*MacroArgument
 	var variadicArg *MacroArgument
 	var keywordCollector *MacroArgument
 
@@ -573,6 +623,8 @@ func (m *Macro) ValidateCall(args []interface{}, kwargs map[string]interface{}) 
 			variadicArg = arg
 		case arg.Keyword:
 			keywordCollector = arg
+		case arg.KeywordOnly:
+			keywordOnlyArgs = append(keywordOnlyArgs, arg)
 		default:
 			positionalArgs = append(positionalArgs, arg)
 		}
@@ -617,6 +669,17 @@ func (m *Macro) ValidateCall(args []interface{}, kwargs map[string]interface{}) 
 	}
 
 	for _, param := range positionalArgs {
+		if param.HasDefault {
+			continue
+		}
+		if !provided[param.Name] {
+			return NewMacroError(m.Name,
+				fmt.Sprintf("missing required argument '%s'", param.Name),
+				m.Position, nil)
+		}
+	}
+
+	for _, param := range keywordOnlyArgs {
 		if param.HasDefault {
 			continue
 		}

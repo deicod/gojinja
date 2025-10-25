@@ -553,18 +553,24 @@ func (p *Parser) parseSignature(node interface{}) error {
 		return err
 	}
 
-	var args []*nodes.Name
-	var defaults []nodes.Expr
-	var varArg *nodes.Name
-	var kwArg *nodes.Name
-	seenDefault := false
+	var (
+		args        []*nodes.Name
+		defaults    []nodes.Expr
+		kwonlyArgs  []*nodes.Name
+		kwDefaults  map[string]nodes.Expr
+		varArg      *nodes.Name
+		kwArg       *nodes.Name
+		seenDefault bool
+		expectComma bool
+		seenStar    bool
+		allowKwOnly bool
+	)
 
 	for p.stream.Peek().Type != lexer.TokenRightParen {
-		if len(args) > 0 {
+		if expectComma {
 			if _, err := p.Expect(lexer.TokenComma); err != nil {
 				return err
 			}
-			// Check for trailing comma
 			if p.stream.Peek().Type == lexer.TokenRightParen {
 				break
 			}
@@ -585,24 +591,37 @@ func (p *Parser) parseSignature(node interface{}) error {
 					return err
 				}
 				kwArg = &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+				expectComma = true
 				continue
 			}
 
+			if seenStar {
+				return p.Fail("duplicate '*' marker in signature", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
+			seenStar = true
+			allowKwOnly = true
+
 			if varArg != nil {
 				return p.Fail("duplicate varargs parameter", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
+
+			if p.stream.Peek().Type == lexer.TokenComma || p.stream.Peek().Type == lexer.TokenRightParen {
+				// Bare ``*`` indicates keyword-only arguments follow
+				expectComma = true
+				continue
 			}
 
 			nameToken, err := p.Expect(lexer.TokenName)
 			if err != nil {
 				return err
 			}
-			name := &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
-			varArg = name
-
-			// After a bare ``*`` marker without name, keyword-only parameters would follow
 			if nameToken.Value == "" {
 				return p.Fail("expected name after '*' in signature", nameToken.Line, &TemplateSyntaxError{})
 			}
+
+			name := &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+			varArg = name
+			expectComma = true
 
 		case lexer.TokenPow:
 			p.stream.Next()
@@ -615,6 +634,7 @@ func (p *Parser) parseSignature(node interface{}) error {
 				return err
 			}
 			kwArg = &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+			expectComma = true
 
 		default:
 			arg, err := p.ParseAssignTargetWithExtraRules(false, false, nil, false)
@@ -627,12 +647,24 @@ func (p *Parser) parseSignature(node interface{}) error {
 				return p.Fail("expected name in argument list", arg.GetPosition().Line, &TemplateSyntaxError{})
 			}
 
-			if varArg != nil {
-				// Keyword-only parameters after ``*`` are not yet supported
-				return p.Fail("keyword-only parameters are not supported", name.GetPosition().Line, &TemplateSyntaxError{})
+			name.Ctx = nodes.CtxParam
+
+			if allowKwOnly {
+				kwonlyArgs = append(kwonlyArgs, name)
+				if p.SkipIf(lexer.TokenAssign) {
+					defaultExpr, err := p.ParseExpression()
+					if err != nil {
+						return err
+					}
+					if kwDefaults == nil {
+						kwDefaults = make(map[string]nodes.Expr)
+					}
+					kwDefaults[name.Name] = defaultExpr
+				}
+				expectComma = true
+				continue
 			}
 
-			name.Ctx = nodes.CtxParam
 			args = append(args, name)
 
 			if p.SkipIf(lexer.TokenAssign) {
@@ -647,6 +679,8 @@ func (p *Parser) parseSignature(node interface{}) error {
 					return p.Fail("non-default argument follows default argument", name.GetPosition().Line, &TemplateSyntaxError{})
 				}
 			}
+
+			expectComma = true
 		}
 	}
 
@@ -659,11 +693,15 @@ func (p *Parser) parseSignature(node interface{}) error {
 	case *nodes.Macro:
 		n.Args = args
 		n.Defaults = defaults
+		n.KwonlyArgs = kwonlyArgs
+		n.KwDefaults = kwDefaults
 		n.VarArg = varArg
 		n.KwArg = kwArg
 	case *nodes.CallBlock:
 		n.Args = args
 		n.Defaults = defaults
+		n.KwonlyArgs = kwonlyArgs
+		n.KwDefaults = kwDefaults
 		n.VarArg = varArg
 		n.KwArg = kwArg
 	default:

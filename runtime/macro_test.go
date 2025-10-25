@@ -199,6 +199,68 @@ func TestMacroValidation(t *testing.T) {
 	}
 }
 
+func TestMacroKeywordOnlyArguments(t *testing.T) {
+	macroNode := &nodes.Macro{
+		Name: "kw",
+		Args: []*nodes.Name{
+			{Name: "a", Ctx: nodes.CtxParam},
+		},
+		KwonlyArgs: []*nodes.Name{
+			{Name: "b", Ctx: nodes.CtxParam},
+			{Name: "c", Ctx: nodes.CtxParam},
+		},
+		KwDefaults: map[string]nodes.Expr{
+			"c": &nodes.Const{Value: "default"},
+		},
+		Body: []nodes.Node{
+			&nodes.Output{
+				Nodes: []nodes.Expr{
+					&nodes.Concat{
+						Nodes: []nodes.Expr{
+							&nodes.Name{Name: "a", Ctx: nodes.CtxLoad},
+							&nodes.TemplateData{Data: "|"},
+							&nodes.Name{Name: "b", Ctx: nodes.CtxLoad},
+							&nodes.TemplateData{Data: "|"},
+							&nodes.Name{Name: "c", Ctx: nodes.CtxLoad},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	macro := NewMacro(macroNode, nil)
+
+	env := NewEnvironment()
+	ctx := NewContextWithEnvironment(env, map[string]interface{}{})
+
+	result, err := macro.CallKwargs(ctx, []interface{}{"first"}, map[string]interface{}{"b": "second"})
+	if err != nil {
+		t.Fatalf("expected call with keyword-only arg to succeed: %v", err)
+	}
+
+	if result != "first|second|default" {
+		t.Fatalf("unexpected result: %v", result)
+	}
+
+	result, err = macro.CallKwargs(ctx, []interface{}{"first"}, map[string]interface{}{"b": "second", "c": "override"})
+	if err != nil {
+		t.Fatalf("expected call with explicit keyword-only default override: %v", err)
+	}
+
+	if result != "first|second|override" {
+		t.Fatalf("unexpected override result: %v", result)
+	}
+
+	if err := macro.ValidateCall([]interface{}{"first"}, nil); err == nil {
+		t.Fatalf("expected missing keyword-only argument to be detected")
+	}
+
+	if _, err := macro.CallKwargs(ctx, []interface{}{"first"}, nil); err == nil {
+		t.Fatalf("expected call without required keyword-only argument to fail")
+	}
+}
+
 func TestMacroValidationWithVarArgs(t *testing.T) {
 	macro := &Macro{
 		Name: "variadic",
