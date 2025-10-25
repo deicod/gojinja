@@ -457,6 +457,9 @@ func (p *Parser) ParseFrom() (nodes.Node, error) {
 			if p.stream.Peek().Type != lexer.TokenComma {
 				break
 			}
+			if fromImport.All {
+				return nil, p.Fail("cannot combine '*' import with explicit names", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
 			p.stream.Next() // consume comma
 		}
 
@@ -469,6 +472,15 @@ func (p *Parser) ParseFrom() (nodes.Node, error) {
 					break
 				}
 			}
+		}
+
+		if p.stream.Peek().Type == lexer.TokenMul {
+			if len(fromImport.Names) > 0 || fromImport.All {
+				return nil, p.Fail("'*' import must be used by itself", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
+			p.stream.Next() // consume '*'
+			fromImport.All = true
+			continue
 		}
 
 		// Parse name
