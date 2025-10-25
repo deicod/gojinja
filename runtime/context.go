@@ -190,6 +190,9 @@ type Context struct {
 	// Error handling
 	errors []error
 
+	// Import handling
+	importManager *ImportManager
+
 	// Concurrency safety
 	mu sync.RWMutex
 }
@@ -263,11 +266,26 @@ func (ctx *Context) addGlobals() {
 	}
 }
 
+func (ctx *Context) rootScope() *Scope {
+	scope := ctx.scope
+	for scope.parent != nil {
+		scope = scope.parent
+	}
+	return scope
+}
+
 // Set sets a variable in the current scope
 func (ctx *Context) Set(name string, value interface{}) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 	ctx.scope.Set(name, value)
+}
+
+// SetExport marks a variable for export on the root scope
+func (ctx *Context) SetExport(name string, value interface{}) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.rootScope().SetExport(name, value)
 }
 
 // Get gets a variable from the context
@@ -277,11 +295,45 @@ func (ctx *Context) Get(name string) (interface{}, bool) {
 	return ctx.scope.Get(name)
 }
 
+// Exports returns a copy of all exported variables from the root scope
+func (ctx *Context) Exports() map[string]interface{} {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+
+	root := ctx.rootScope()
+	exports := make(map[string]interface{}, len(root.exports))
+	for k, v := range root.exports {
+		exports[k] = v
+	}
+	return exports
+}
+
+// InRootScope reports whether the current scope is the root scope
+func (ctx *Context) InRootScope() bool {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	return ctx.scope.parent == nil
+}
+
 // Delete deletes a variable from the current scope
 func (ctx *Context) Delete(name string) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 	ctx.scope.Delete(name)
+}
+
+// SetImportManager assigns the import manager used by the context
+func (ctx *Context) SetImportManager(manager *ImportManager) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.importManager = manager
+}
+
+// GetImportManager returns the import manager associated with the context
+func (ctx *Context) GetImportManager() *ImportManager {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	return ctx.importManager
 }
 
 // Has checks if a variable exists in the context

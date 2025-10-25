@@ -223,6 +223,48 @@ func (t *Template) ExecuteToString(vars map[string]interface{}) (string, error) 
 	return buf.String(), nil
 }
 
+// newModuleContext prepares a context suitable for module execution.
+func (t *Template) newModuleContext(vars map[string]interface{}) *Context {
+	ctx := NewContextWithEnvironment(t.environment, vars)
+	ctx.SetAutoescape(t.autoescape)
+	ctx.current = t
+
+	var buf strings.Builder
+	ctx.writer = &buf
+
+	return ctx
+}
+
+// makeModuleFromContext executes the template with the provided context and produces a module namespace.
+func (t *Template) makeModuleFromContext(ctx *Context) (*MacroNamespace, error) {
+	if err := t.ExecuteWithContext(ctx); err != nil {
+		return nil, err
+	}
+
+	module := NewMacroNamespace(t.name, t)
+	module.Context = ctx
+
+	if t.environment != nil {
+		if registry := t.environment.GetMacroRegistry(); registry != nil {
+			for name, macro := range registry.GetTemplateMacros(t.name) {
+				module.AddMacro(name, macro)
+			}
+		}
+	}
+
+	for name, value := range ctx.Exports() {
+		module.AddExport(name, value)
+	}
+
+	return module, nil
+}
+
+// MakeModule executes the template in module mode and returns a namespace with exported members.
+func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, error) {
+	ctx := t.newModuleContext(vars)
+	return t.makeModuleFromContext(ctx)
+}
+
 // Name returns the template name
 func (t *Template) Name() string {
 	return t.name

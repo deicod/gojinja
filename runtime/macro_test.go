@@ -239,6 +239,9 @@ Hello, {{ name }}!
 {% macro complex_macro(a, b=2) %}
 {{ a }} + {{ b }} = {{ a + b }}
 {% endmacro %}
+
+{% set default_greeting = 'Howdy' %}
+{% export default_greeting %}
 `
 
 	// Create a mock loader
@@ -269,6 +272,15 @@ Hello, {{ name }}!
 		t.Errorf("Expected macro name 'helper_macro', got '%s'", macro.Name)
 	}
 
+	// Exported values should be available through Resolve
+	value, ok := namespace.Resolve("default_greeting")
+	if !ok {
+		t.Fatalf("expected exported value 'default_greeting' to be resolvable")
+	}
+	if value.(string) != "Howdy" {
+		t.Errorf("expected default_greeting to equal 'Howdy', got %v", value)
+	}
+
 	// Test macro execution
 	result, err := macro.Call(ctx, "World")
 	if err != nil {
@@ -281,21 +293,32 @@ Hello, {{ name }}!
 	}
 
 	// Test from import
-	macros, err := importManager.ImportMacros(ctx, "helpers.html", []string{"helper_macro", "complex_macro"}, false)
+	imports, err := importManager.ImportMacros(ctx, "helpers.html", []string{"helper_macro", "complex_macro", "default_greeting"}, false)
 	if err != nil {
 		t.Fatalf("Failed to import macros: %v", err)
 	}
 
-	if len(macros) != 2 {
-		t.Errorf("Expected 2 macros, got %d", len(macros))
+	if len(imports) != 3 {
+		t.Errorf("Expected 3 imported values, got %d", len(imports))
 	}
 
-	if _, exists := macros["helper_macro"]; !exists {
+	helper, exists := imports["helper_macro"]
+	if !exists {
 		t.Error("Expected 'helper_macro' to be imported")
+	} else if _, ok := helper.(*Macro); !ok {
+		t.Errorf("Expected 'helper_macro' to be a Macro, got %T", helper)
 	}
 
-	if _, exists := macros["complex_macro"]; !exists {
+	if complex, exists := imports["complex_macro"]; !exists {
 		t.Error("Expected 'complex_macro' to be imported")
+	} else if _, ok := complex.(*Macro); !ok {
+		t.Errorf("Expected 'complex_macro' to be a Macro, got %T", complex)
+	}
+
+	if greeting, exists := imports["default_greeting"]; !exists {
+		t.Error("Expected 'default_greeting' to be imported")
+	} else if greeting.(string) != "Howdy" {
+		t.Errorf("Expected exported greeting to equal 'Howdy', got %v", greeting)
 	}
 }
 

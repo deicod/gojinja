@@ -192,6 +192,8 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitDo(n)
 	case *nodes.ExprStmt:
 		return e.visitExprStmt(n)
+	case *nodes.Export:
+		return e.visitExport(n)
 	case *nodes.Continue:
 		return e.visitContinue(n)
 	case *nodes.Break:
@@ -639,7 +641,11 @@ func (e *Evaluator) visitImport(node *nodes.Import) interface{} {
 		return NewError(ErrorTypeTemplate, "no environment available for imports", node.GetPosition(), node)
 	}
 
-	importManager := NewImportManager(e.ctx.environment)
+	importManager := e.ctx.GetImportManager()
+	if importManager == nil {
+		importManager = NewImportManager(e.ctx.environment)
+		e.ctx.SetImportManager(importManager)
+	}
 	namespace, err := importManager.ImportTemplate(e.ctx, templateName, node.WithContext)
 	if err != nil {
 		return NewImportError(templateName, err.Error(), node.GetPosition(), node)
@@ -668,7 +674,11 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 		return NewError(ErrorTypeTemplate, "no environment available for imports", node.GetPosition(), node)
 	}
 
-	importManager := NewImportManager(e.ctx.environment)
+	importManager := e.ctx.GetImportManager()
+	if importManager == nil {
+		importManager = NewImportManager(e.ctx.environment)
+		e.ctx.SetImportManager(importManager)
+	}
 
 	// Prepare macro names to import
 	macroNames := make([]string, len(node.Names))
@@ -680,14 +690,14 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 		}
 	}
 
-	macros, err := importManager.ImportMacros(e.ctx, templateName, macroNames, node.WithContext)
+	values, err := importManager.ImportMacros(e.ctx, templateName, macroNames, node.WithContext)
 	if err != nil {
 		return NewImportError(templateName, err.Error(), node.GetPosition(), node)
 	}
 
-	// Store each macro in the current context
-	for alias, macro := range macros {
-		e.ctx.Set(alias, macro)
+	// Store each imported value in the current context
+	for alias, value := range values {
+		e.ctx.Set(alias, value)
 	}
 
 	return nil
@@ -699,6 +709,9 @@ func (e *Evaluator) visitMacro(node *nodes.Macro) interface{} {
 
 	// Store macro in current scope and registry
 	e.ctx.Set(node.Name, macro)
+	if e.ctx.InRootScope() {
+		e.ctx.SetExport(node.Name, macro)
+	}
 
 	// Register in template's macro registry
 	if e.ctx.current != nil && e.ctx.environment != nil {
@@ -1034,6 +1047,22 @@ func (e *Evaluator) visitDo(node *nodes.Do) interface{} {
 	if signal, ok := isControlSignal(result); ok {
 		return signal
 	}
+	return nil
+}
+
+func (e *Evaluator) visitExport(node *nodes.Export) interface{} {
+	if !e.ctx.InRootScope() {
+		return NewError(ErrorTypeTemplate, "export statements are only allowed at the top level", node.GetPosition(), node)
+	}
+
+	for _, name := range node.Names {
+		value, exists := e.ctx.Get(name.Name)
+		if !exists {
+			return NewUndefinedError(name.Name, name.GetPosition(), node)
+		}
+		e.ctx.SetExport(name.Name, value)
+	}
+
 	return nil
 }
 

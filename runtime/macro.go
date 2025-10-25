@@ -49,6 +49,7 @@ type MacroCaller struct {
 type MacroNamespace struct {
 	Name     string
 	Macros   map[string]*Macro
+	Exports  map[string]interface{}
 	Template *Template
 	Context  *Context
 
@@ -134,6 +135,7 @@ func NewMacroNamespace(name string, template *Template) *MacroNamespace {
 	return &MacroNamespace{
 		Name:     name,
 		Macros:   make(map[string]*Macro),
+		Exports:  make(map[string]interface{}),
 		Template: template,
 	}
 }
@@ -637,6 +639,13 @@ func (ns *MacroNamespace) AddMacro(name string, macro *Macro) {
 	ns.Macros[name] = macro
 }
 
+// AddExport adds an exported value to the namespace
+func (ns *MacroNamespace) AddExport(name string, value interface{}) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.Exports[name] = value
+}
+
 // GetMacro gets a macro from the namespace
 func (ns *MacroNamespace) GetMacro(name string) (*Macro, error) {
 	ns.mu.RLock()
@@ -650,6 +659,28 @@ func (ns *MacroNamespace) GetMacro(name string) (*Macro, error) {
 	}
 
 	return macro, nil
+}
+
+// GetExport retrieves an exported value by name
+func (ns *MacroNamespace) GetExport(name string) (interface{}, bool) {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+	value, exists := ns.Exports[name]
+	return value, exists
+}
+
+// Resolve returns either a macro or exported value stored under the provided name
+func (ns *MacroNamespace) Resolve(name string) (interface{}, bool) {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+
+	if macro, ok := ns.Macros[name]; ok {
+		return macro, true
+	}
+	if value, ok := ns.Exports[name]; ok {
+		return value, true
+	}
+	return nil, false
 }
 
 // HasMacro checks if the namespace contains a macro
@@ -672,6 +703,18 @@ func (ns *MacroNamespace) GetMacroNames() []string {
 	return names
 }
 
+// GetExportNames returns the names of exported values in the namespace
+func (ns *MacroNamespace) GetExportNames() []string {
+	ns.mu.RLock()
+	defer ns.mu.RUnlock()
+
+	names := make([]string, 0, len(ns.Exports))
+	for name := range ns.Exports {
+		names = append(names, name)
+	}
+	return names
+}
+
 // String returns a string representation of the namespace
 func (ns *MacroNamespace) String() string {
 	ns.mu.RLock()
@@ -682,7 +725,15 @@ func (ns *MacroNamespace) String() string {
 		macroNames = append(macroNames, name)
 	}
 
-	return fmt.Sprintf("MacroNamespace(%s: [%s])", ns.Name, strings.Join(macroNames, ", "))
+	exportNames := make([]string, 0, len(ns.Exports))
+	for name := range ns.Exports {
+		exportNames = append(exportNames, name)
+	}
+
+	return fmt.Sprintf("MacroNamespace(%s: macros=[%s], exports=[%s])",
+		ns.Name,
+		strings.Join(macroNames, ", "),
+		strings.Join(exportNames, ", "))
 }
 
 // Registry methods

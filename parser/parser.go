@@ -431,6 +431,7 @@ var statementKeywords = map[string]bool{
 	"set":        true,
 	"with":       true,
 	"namespace":  true,
+	"export":     true,
 	"trans":      true,
 	"blocktrans": true,
 	"autoescape": true,

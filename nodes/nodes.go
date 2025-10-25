@@ -542,6 +542,32 @@ func (n *Namespace) String() string {
 	return fmt.Sprintf("Namespace(name=%s, value=%v, body=%v)", n.Name, n.Value, n.Body)
 }
 
+// Export marks one or more names for export from the compiled template module.
+type Export struct {
+	BaseStmt
+	Names []*Name `json:"names"`
+}
+
+func (e *Export) Accept(visitor Visitor) interface{} {
+	return visitor.Visit(e)
+}
+
+func (e *Export) GetChildren() []Node {
+	children := make([]Node, len(e.Names))
+	for i, name := range e.Names {
+		children[i] = name
+	}
+	return children
+}
+
+func (e *Export) String() string {
+	names := make([]string, len(e.Names))
+	for i, name := range e.Names {
+		names[i] = name.Name
+	}
+	return fmt.Sprintf("Export(%s)", strings.Join(names, ", "))
+}
+
 // Trans represents a translation block with optional pluralization support.
 type Trans struct {
 	BaseStmt

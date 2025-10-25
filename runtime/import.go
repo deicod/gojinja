@@ -35,19 +35,22 @@ func NewImportManager(env *Environment) *ImportManager {
 // ImportTemplate imports a template and returns a macro namespace
 func (im *ImportManager) ImportTemplate(ctx *Context, templateName string, withContext bool) (*MacroNamespace, error) {
 	im.mu.Lock()
-	defer im.mu.Unlock()
 
 	// Check for circular imports
 	for _, name := range im.importStack {
 		if name == templateName {
+			im.mu.Unlock()
 			return nil, NewImportError(templateName, "circular import detected", nodes.Position{}, nil)
 		}
 	}
 
 	// Check cache first
 	if template, exists := im.importCache[templateName]; exists {
+		im.mu.Unlock()
 		return im.createNamespaceFromTemplate(ctx, templateName, template, withContext)
 	}
+
+	im.mu.Unlock()
 
 	// Load the template
 	template, err := im.environment.LoadTemplate(templateName)
@@ -55,46 +58,41 @@ func (im *ImportManager) ImportTemplate(ctx *Context, templateName string, withC
 		return nil, NewImportError(templateName, err.Error(), nodes.Position{}, nil)
 	}
 
-	// Cache the template
+	im.mu.Lock()
 	im.importCache[templateName] = template
+	im.mu.Unlock()
 
 	// Create namespace
 	return im.createNamespaceFromTemplate(ctx, templateName, template, withContext)
 }
 
 // ImportMacros imports specific macros from a template
-func (im *ImportManager) ImportMacros(ctx *Context, templateName string, macroNames []string, withContext bool) (map[string]*Macro, error) {
+func (im *ImportManager) ImportMacros(ctx *Context, templateName string, macroNames []string, withContext bool) (map[string]interface{}, error) {
 	namespace, err := im.ImportTemplate(ctx, templateName, withContext)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*Macro)
+	result := make(map[string]interface{})
 	for _, macroName := range macroNames {
-		macro, err := namespace.GetMacro(macroName)
-		if err != nil {
-			return nil, NewImportError(templateName,
-				fmt.Sprintf("macro '%s' not found in template", macroName),
-				nodes.Position{}, nil)
-		}
-
-		// Handle aliasing
+		name := macroName
 		alias := macroName
 		if strings.Contains(macroName, " as ") {
-			parts := strings.Split(macroName, " as ")
+			parts := strings.SplitN(macroName, " as ", 2)
 			if len(parts) == 2 {
+				name = strings.TrimSpace(parts[0])
 				alias = strings.TrimSpace(parts[1])
-				macroName = strings.TrimSpace(parts[0])
-				macro, err = namespace.GetMacro(macroName)
-				if err != nil {
-					return nil, NewImportError(templateName,
-						fmt.Sprintf("macro '%s' not found in template", macroName),
-						nodes.Position{}, nil)
-				}
 			}
 		}
 
-		result[alias] = macro
+		value, ok := namespace.Resolve(name)
+		if !ok {
+			return nil, NewImportError(templateName,
+				fmt.Sprintf("name '%s' not found in template", name),
+				nodes.Position{}, nil)
+		}
+
+		result[alias] = value
 	}
 
 	return result, nil
@@ -102,95 +100,32 @@ func (im *ImportManager) ImportMacros(ctx *Context, templateName string, macroNa
 
 // createNamespaceFromTemplate creates a macro namespace from a template
 func (im *ImportManager) createNamespaceFromTemplate(ctx *Context, templateName string, template *Template, withContext bool) (*MacroNamespace, error) {
-	// Create import context
-	var importContext *Context
-	if withContext {
-		// Create a copy of the current context
-		importContext = NewContextWithEnvironment(im.environment, ctx.scope.All())
-	} else {
-		importContext = NewContextWithEnvironment(im.environment, nil)
+	var vars map[string]interface{}
+	if withContext && ctx != nil {
+		vars = ctx.scope.All()
 	}
 
-	// Set template reference
-	importContext.current = template
-
-	// Create namespace
-	namespace := NewMacroNamespace(templateName, template)
-	namespace.Context = importContext
-
-	// Process the template to collect macros
+	im.mu.Lock()
 	im.importStack = append(im.importStack, templateName)
+	im.mu.Unlock()
 	defer func() {
+		im.mu.Lock()
 		im.importStack = im.importStack[:len(im.importStack)-1]
+		im.mu.Unlock()
 	}()
 
-	// Execute template in a special mode to collect macros
-	evaluator := NewEvaluator(importContext)
+	moduleCtx := template.newModuleContext(vars)
+	moduleCtx.SetImportManager(im)
 
-	// Create a buffer to capture output (we discard it)
-	var buf strings.Builder
-	oldWriter := importContext.writer
-	importContext.writer = &buf
-	defer func() { importContext.writer = oldWriter }()
-
-	// Process the template to collect macro definitions
-	im.collectMacrosFromAST(evaluator, template.AST(), namespace)
-
-	return namespace, nil
-}
-
-// collectMacrosFromAST walks the AST and collects macro definitions
-func (im *ImportManager) collectMacrosFromAST(evaluator *Evaluator, node nodes.Node, namespace *MacroNamespace) {
-	switch n := node.(type) {
-	case *nodes.Template:
-		for _, child := range n.Body {
-			im.collectMacrosFromAST(evaluator, child, namespace)
-		}
-	case *nodes.Macro:
-		// Create macro from AST node
-		macro := NewMacro(n, namespace.Template)
-		namespace.AddMacro(macro.Name, macro)
-
-		// Also register in the global registry
-		im.registry.RegisterNamespace(fmt.Sprintf("%s.%s", namespace.Name, macro.Name), namespace)
-	case *nodes.Import:
-		// Handle nested imports
-		templateNameValue := evaluator.Evaluate(n.Template)
-		if templateNameStr, ok := templateNameValue.(string); ok {
-			nestedNamespace, err := im.ImportTemplate(evaluator.ctx, templateNameStr, n.WithContext)
-			if err == nil {
-				// Merge nested namespace macros
-				for name, macro := range nestedNamespace.Macros {
-					namespace.AddMacro(fmt.Sprintf("%s.%s", n.Target, name), macro)
-				}
-			}
-		}
-	case *nodes.FromImport:
-		// Handle from imports
-		templateNameValue := evaluator.Evaluate(n.Template)
-		if templateNameStr, ok := templateNameValue.(string); ok {
-			importedMacros := make([]string, len(n.Names))
-			for i, importName := range n.Names {
-				if importName.Alias != "" {
-					importedMacros[i] = fmt.Sprintf("%s as %s", importName.Name, importName.Alias)
-				} else {
-					importedMacros[i] = importName.Name
-				}
-			}
-
-			macros, err := im.ImportMacros(evaluator.ctx, templateNameStr, importedMacros, n.WithContext)
-			if err == nil {
-				for alias, macro := range macros {
-					namespace.AddMacro(alias, macro)
-				}
-			}
-		}
-	default:
-		// Recursively process child nodes
-		for _, child := range node.GetChildren() {
-			im.collectMacrosFromAST(evaluator, child, namespace)
-		}
+	module, err := template.makeModuleFromContext(moduleCtx)
+	if err != nil {
+		return nil, err
 	}
+
+	// Ensure the namespace is registered for later resolution
+	im.registry.RegisterNamespace(templateName, module)
+
+	return module, nil
 }
 
 // ResolveMacroPath resolves a macro path (e.g., "namespace.macro" or just "macro")
@@ -284,11 +219,11 @@ func (rir *RelativeImportResolver) Resolve(templatePath string) string {
 
 // MacroImport represents a macro import configuration
 type MacroImport struct {
-	Template     string
-	Macros       []string
-	Alias        string
-	WithContext  bool
-	Position     nodes.Position
+	Template    string
+	Macros      []string
+	Alias       string
+	WithContext bool
+	Position    nodes.Position
 }
 
 // ImportContext maintains import context during template processing
