@@ -698,6 +698,7 @@ type FromImport struct {
 	Template    Expr         `json:"template"`
 	Names       []ImportName `json:"names"`
 	WithContext bool         `json:"with_context"`
+	All         bool         `json:"all"`
 }
 
 // ImportName represents either a simple name or an alias (name, alias)
@@ -718,8 +719,8 @@ func (i *FromImport) GetChildren() []Node {
 }
 
 func (i *FromImport) String() string {
-	return fmt.Sprintf("FromImport(template=%v, names=%v, with_context=%t)",
-		i.Template, i.Names, i.WithContext)
+	return fmt.Sprintf("FromImport(template=%v, names=%v, with_context=%t, all=%t)",
+		i.Template, i.Names, i.WithContext, i.All)
 }
 
 // ExprStmt represents a statement that evaluates an expression and discards the result

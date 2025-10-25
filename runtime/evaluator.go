@@ -680,6 +680,39 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 		e.ctx.SetImportManager(importManager)
 	}
 
+	if node.All {
+		namespace, err := importManager.ImportTemplate(e.ctx, templateName, node.WithContext)
+		if err != nil {
+			return NewImportError(templateName, err.Error(), node.GetPosition(), node)
+		}
+
+		imported := make(map[string]struct{})
+
+		for _, name := range namespace.GetExportNames() {
+			if strings.HasPrefix(name, "_") {
+				continue
+			}
+			if value, ok := namespace.Resolve(name); ok {
+				e.ctx.Set(name, value)
+				imported[name] = struct{}{}
+			}
+		}
+
+		for _, name := range namespace.GetMacroNames() {
+			if strings.HasPrefix(name, "_") {
+				continue
+			}
+			if _, exists := imported[name]; exists {
+				continue
+			}
+			if macro, err := namespace.GetMacro(name); err == nil {
+				e.ctx.Set(name, macro)
+			}
+		}
+
+		return nil
+	}
+
 	// Prepare macro names to import
 	macroNames := make([]string, len(node.Names))
 	for i, importName := range node.Names {
