@@ -263,6 +263,14 @@ func (ctx *Context) addGlobals() {
 	}
 }
 
+func (ctx *Context) rootScope() *Scope {
+	scope := ctx.scope
+	for scope.parent != nil {
+		scope = scope.parent
+	}
+	return scope
+}
+
 // Set sets a variable in the current scope
 func (ctx *Context) Set(name string, value interface{}) {
 	ctx.mu.Lock()
@@ -270,11 +278,38 @@ func (ctx *Context) Set(name string, value interface{}) {
 	ctx.scope.Set(name, value)
 }
 
+// SetExport marks a variable for export on the root scope
+func (ctx *Context) SetExport(name string, value interface{}) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.rootScope().SetExport(name, value)
+}
+
 // Get gets a variable from the context
 func (ctx *Context) Get(name string) (interface{}, bool) {
 	ctx.mu.RLock()
 	defer ctx.mu.RUnlock()
 	return ctx.scope.Get(name)
+}
+
+// Exports returns a copy of all exported variables from the root scope
+func (ctx *Context) Exports() map[string]interface{} {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+
+	root := ctx.rootScope()
+	exports := make(map[string]interface{}, len(root.exports))
+	for k, v := range root.exports {
+		exports[k] = v
+	}
+	return exports
+}
+
+// InRootScope reports whether the current scope is the root scope
+func (ctx *Context) InRootScope() bool {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	return ctx.scope.parent == nil
 }
 
 // Delete deletes a variable from the current scope

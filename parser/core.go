@@ -55,6 +55,8 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 			return p.ParseWith()
 		case "namespace":
 			return p.ParseNamespace()
+		case "export":
+			return p.ParseExport()
 		case "trans":
 			return p.ParseTrans(false)
 		case "blocktrans":

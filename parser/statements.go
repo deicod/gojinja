@@ -199,6 +199,40 @@ func (p *Parser) ParseNamespace() (nodes.Node, error) {
 	return namespace, nil
 }
 
+// ParseExport parses an export statement
+func (p *Parser) ParseExport() (nodes.Node, error) {
+	lineno := p.stream.Next().Line // consume 'export'
+
+	export := &nodes.Export{}
+
+	// At least one name is required
+	if p.stream.Peek().Type != lexer.TokenName {
+		return nil, p.Fail("expected at least one name to export", lineno, &TemplateSyntaxError{})
+	}
+
+	for {
+		nameToken, err := p.Expect(lexer.TokenName)
+		if err != nil {
+			return nil, err
+		}
+
+		name := &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxStore}
+		name.SetPosition(nodes.NewPosition(nameToken.Line, nameToken.Column))
+		export.Names = append(export.Names, name)
+
+		if !p.SkipIf(lexer.TokenComma) {
+			break
+		}
+
+		if p.stream.Peek().Type != lexer.TokenName {
+			return nil, p.Fail("expected name after ',' in export statement", p.stream.Peek().Line, &TemplateSyntaxError{})
+		}
+	}
+
+	export.SetPosition(nodes.NewPosition(lineno, 0))
+	return export, nil
+}
+
 // ParseTrans parses both trans and blocktrans statements.
 func (p *Parser) ParseTrans(_ bool) (nodes.Node, error) {
 	token := p.stream.Next()

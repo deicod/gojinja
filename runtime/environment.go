@@ -880,6 +880,12 @@ func (env *Environment) resolveValue(value interface{}, attr string) (interface{
 		}
 	}
 
+	if ns, ok := value.(*MacroNamespace); ok {
+		if v, exists := ns.Resolve(attr); exists {
+			return v, nil
+		}
+	}
+
 	// Handle string methods
 	if str, ok := value.(string); ok {
 		switch attr {
