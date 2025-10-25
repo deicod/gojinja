@@ -355,6 +355,53 @@ func TestParser_MacroVarArgs(t *testing.T) {
 	}
 }
 
+func TestParser_MacroKeywordOnly(t *testing.T) {
+	env := &Environment{}
+
+	parser, err := NewParser(env, "{% macro test(a, *, b, c=42, **kwargs) %}{% endmacro %}", "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single node in template body, got %d", len(tmpl.Body))
+	}
+
+	macro, ok := tmpl.Body[0].(*nodes.Macro)
+	if !ok {
+		t.Fatalf("expected Macro node, got %T", tmpl.Body[0])
+	}
+
+	if len(macro.Args) != 1 {
+		t.Fatalf("expected one positional arg, got %d", len(macro.Args))
+	}
+
+	if len(macro.KwonlyArgs) != 2 {
+		t.Fatalf("expected two keyword-only args, got %d", len(macro.KwonlyArgs))
+	}
+
+	if macro.KwonlyArgs[0].Name != "b" || macro.KwonlyArgs[1].Name != "c" {
+		t.Fatalf("unexpected keyword-only args: %+v", macro.KwonlyArgs)
+	}
+
+	if macro.KwDefaults == nil {
+		t.Fatalf("expected keyword-only defaults map")
+	}
+
+	if _, ok := macro.KwDefaults["c"]; !ok {
+		t.Fatalf("expected default for keyword-only arg 'c'")
+	}
+
+	if macro.KwArg == nil || macro.KwArg.Name != "kwargs" {
+		t.Fatalf("expected kwarg collector, got %+v", macro.KwArg)
+	}
+}
+
 func TestParserLineStatements(t *testing.T) {
 	env := &Environment{LineStatementPrefix: "#"}
 

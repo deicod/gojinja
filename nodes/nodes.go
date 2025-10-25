@@ -343,12 +343,14 @@ func (i *If) String() string {
 // Macro represents a macro definition
 type Macro struct {
 	BaseStmt
-	Name     string  `json:"name"`
-	Args     []*Name `json:"args"`
-	Defaults []Expr  `json:"defaults"`
-	VarArg   *Name   `json:"vararg"`
-	KwArg    *Name   `json:"kwarg"`
-	Body     []Node  `json:"body"`
+	Name       string          `json:"name"`
+	Args       []*Name         `json:"args"`
+	Defaults   []Expr          `json:"defaults"`
+	KwonlyArgs []*Name         `json:"kwonly_args"`
+	KwDefaults map[string]Expr `json:"kwdefaults"`
+	VarArg     *Name           `json:"vararg"`
+	KwArg      *Name           `json:"kwarg"`
+	Body       []Node          `json:"body"`
 }
 
 func (m *Macro) Accept(visitor Visitor) interface{} {
@@ -370,7 +372,15 @@ func (m *Macro) GetChildren() []Node {
 		children = append(children, m.KwArg)
 	}
 
+	for _, kwOnly := range m.KwonlyArgs {
+		children = append(children, kwOnly)
+	}
+
 	for _, def := range m.Defaults {
+		children = append(children, def)
+	}
+
+	for _, def := range m.KwDefaults {
 		children = append(children, def)
 	}
 
@@ -387,12 +397,14 @@ func (m *Macro) String() string {
 // CallBlock represents a call block (like a macro without a name)
 type CallBlock struct {
 	BaseStmt
-	Call     *Call   `json:"call"`
-	Args     []*Name `json:"args"`
-	Defaults []Expr  `json:"defaults"`
-	VarArg   *Name   `json:"vararg"`
-	KwArg    *Name   `json:"kwarg"`
-	Body     []Node  `json:"body"`
+	Call       *Call           `json:"call"`
+	Args       []*Name         `json:"args"`
+	Defaults   []Expr          `json:"defaults"`
+	KwonlyArgs []*Name         `json:"kwonly_args"`
+	KwDefaults map[string]Expr `json:"kwdefaults"`
+	VarArg     *Name           `json:"vararg"`
+	KwArg      *Name           `json:"kwarg"`
+	Body       []Node          `json:"body"`
 }
 
 func (c *CallBlock) Accept(visitor Visitor) interface{} {
