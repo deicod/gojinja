@@ -346,6 +346,8 @@ type Macro struct {
 	Name     string  `json:"name"`
 	Args     []*Name `json:"args"`
 	Defaults []Expr  `json:"defaults"`
+	VarArg   *Name   `json:"vararg"`
+	KwArg    *Name   `json:"kwarg"`
 	Body     []Node  `json:"body"`
 }
 
@@ -360,6 +362,14 @@ func (m *Macro) GetChildren() []Node {
 		children = append(children, arg)
 	}
 
+	if m.VarArg != nil {
+		children = append(children, m.VarArg)
+	}
+
+	if m.KwArg != nil {
+		children = append(children, m.KwArg)
+	}
+
 	for _, def := range m.Defaults {
 		children = append(children, def)
 	}
@@ -370,8 +380,8 @@ func (m *Macro) GetChildren() []Node {
 }
 
 func (m *Macro) String() string {
-	return fmt.Sprintf("Macro(name=%s, args=%v, defaults=%v, body=%v)",
-		m.Name, m.Args, m.Defaults, m.Body)
+	return fmt.Sprintf("Macro(name=%s, args=%v, vararg=%v, kwarg=%v, defaults=%v, body=%v)",
+		m.Name, m.Args, m.VarArg, m.KwArg, m.Defaults, m.Body)
 }
 
 // CallBlock represents a call block (like a macro without a name)
@@ -380,6 +390,8 @@ type CallBlock struct {
 	Call     *Call   `json:"call"`
 	Args     []*Name `json:"args"`
 	Defaults []Expr  `json:"defaults"`
+	VarArg   *Name   `json:"vararg"`
+	KwArg    *Name   `json:"kwarg"`
 	Body     []Node  `json:"body"`
 }
 
@@ -398,6 +410,14 @@ func (c *CallBlock) GetChildren() []Node {
 		children = append(children, arg)
 	}
 
+	if c.VarArg != nil {
+		children = append(children, c.VarArg)
+	}
+
+	if c.KwArg != nil {
+		children = append(children, c.KwArg)
+	}
+
 	for _, def := range c.Defaults {
 		children = append(children, def)
 	}
@@ -408,8 +428,8 @@ func (c *CallBlock) GetChildren() []Node {
 }
 
 func (c *CallBlock) String() string {
-	return fmt.Sprintf("CallBlock(call=%v, args=%v, defaults=%v, body=%v)",
-		c.Call, c.Args, c.Defaults, c.Body)
+	return fmt.Sprintf("CallBlock(call=%v, args=%v, vararg=%v, kwarg=%v, defaults=%v, body=%v)",
+		c.Call, c.Args, c.VarArg, c.KwArg, c.Defaults, c.Body)
 }
 
 // FilterBlock represents a filter section

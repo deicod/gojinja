@@ -42,6 +42,7 @@
 
 - Macro declarations, caller blocks, imports (`import`/`from`), and namespace tracking are covered via the macro registry and import runtime (`parser/statements.go`, `runtime/macro.go`, `runtime/import.go`).
 - `with context` / `without context` toggles and `call` blocks propagate scope data appropriately (`runtime/evaluator.go`).
+- Variadic argument collectors (`*args`) and keyword dictionaries (`**kwargs`) bind with the same semantics as Jinja macros, including duplicate argument detection (`parser/statements.go`, `runtime/macro.go`).
 
 **Remaining gaps**: macro argument validation (keyword-only ordering, default expression late binding) and template module exports remain TODOs.
 
