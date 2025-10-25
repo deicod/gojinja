@@ -27,3 +27,19 @@ func TestParseFile(t *testing.T) {
 		t.Fatalf("expected 'Hello Go!', got %q", output)
 	}
 }
+
+func TestFloorDivisionOperator(t *testing.T) {
+	tmpl, err := ParseString("{{ 7 // 2 }}")
+	if err != nil {
+		t.Fatalf("ParseString error: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("ExecuteToString error: %v", err)
+	}
+
+	if output != "3" {
+		t.Fatalf("expected '3', got %q", output)
+	}
+}
