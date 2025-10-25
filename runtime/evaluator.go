@@ -2605,6 +2605,15 @@ func (e *Evaluator) divide(left, right interface{}, pos nodes.Position) interfac
 }
 
 func (e *Evaluator) floorDivide(left, right interface{}, pos nodes.Position) interface{} {
+	floorDiv := func(l, r int64) int64 {
+		q := l / r
+		rem := l % r
+		if rem != 0 && ((rem > 0 && r < 0) || (rem < 0 && r > 0)) {
+			q--
+		}
+		return q
+	}
+
 	switch l := left.(type) {
 	case int:
 		switch r := right.(type) {
@@ -2612,12 +2621,12 @@ func (e *Evaluator) floorDivide(left, right interface{}, pos nodes.Position) int
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 			}
-			return l / r
+			return int(floorDiv(int64(l), int64(r)))
 		case int64:
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 			}
-			return int64(l) / r
+			return floorDiv(int64(l), r)
 		case float64:
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
@@ -2630,12 +2639,12 @@ func (e *Evaluator) floorDivide(left, right interface{}, pos nodes.Position) int
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 			}
-			return l / int64(r)
+			return floorDiv(l, int64(r))
 		case int64:
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 			}
-			return l / r
+			return floorDiv(l, r)
 		case float64:
 			if r == 0 {
 				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
