@@ -223,8 +223,8 @@ func (t *Template) ExecuteToString(vars map[string]interface{}) (string, error) 
 	return buf.String(), nil
 }
 
-// MakeModule executes the template in module mode and returns a namespace with exported members.
-func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, error) {
+// newModuleContext prepares a context suitable for module execution.
+func (t *Template) newModuleContext(vars map[string]interface{}) *Context {
 	ctx := NewContextWithEnvironment(t.environment, vars)
 	ctx.SetAutoescape(t.autoescape)
 	ctx.current = t
@@ -232,6 +232,11 @@ func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, err
 	var buf strings.Builder
 	ctx.writer = &buf
 
+	return ctx
+}
+
+// makeModuleFromContext executes the template with the provided context and produces a module namespace.
+func (t *Template) makeModuleFromContext(ctx *Context) (*MacroNamespace, error) {
 	if err := t.ExecuteWithContext(ctx); err != nil {
 		return nil, err
 	}
@@ -252,6 +257,12 @@ func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, err
 	}
 
 	return module, nil
+}
+
+// MakeModule executes the template in module mode and returns a namespace with exported members.
+func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, error) {
+	ctx := t.newModuleContext(vars)
+	return t.makeModuleFromContext(ctx)
 }
 
 // Name returns the template name

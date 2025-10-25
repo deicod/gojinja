@@ -35,19 +35,22 @@ func NewImportManager(env *Environment) *ImportManager {
 // ImportTemplate imports a template and returns a macro namespace
 func (im *ImportManager) ImportTemplate(ctx *Context, templateName string, withContext bool) (*MacroNamespace, error) {
 	im.mu.Lock()
-	defer im.mu.Unlock()
 
 	// Check for circular imports
 	for _, name := range im.importStack {
 		if name == templateName {
+			im.mu.Unlock()
 			return nil, NewImportError(templateName, "circular import detected", nodes.Position{}, nil)
 		}
 	}
 
 	// Check cache first
 	if template, exists := im.importCache[templateName]; exists {
+		im.mu.Unlock()
 		return im.createNamespaceFromTemplate(ctx, templateName, template, withContext)
 	}
+
+	im.mu.Unlock()
 
 	// Load the template
 	template, err := im.environment.LoadTemplate(templateName)
@@ -55,8 +58,9 @@ func (im *ImportManager) ImportTemplate(ctx *Context, templateName string, withC
 		return nil, NewImportError(templateName, err.Error(), nodes.Position{}, nil)
 	}
 
-	// Cache the template
+	im.mu.Lock()
 	im.importCache[templateName] = template
+	im.mu.Unlock()
 
 	// Create namespace
 	return im.createNamespaceFromTemplate(ctx, templateName, template, withContext)
@@ -101,12 +105,19 @@ func (im *ImportManager) createNamespaceFromTemplate(ctx *Context, templateName 
 		vars = ctx.scope.All()
 	}
 
+	im.mu.Lock()
 	im.importStack = append(im.importStack, templateName)
+	im.mu.Unlock()
 	defer func() {
+		im.mu.Lock()
 		im.importStack = im.importStack[:len(im.importStack)-1]
+		im.mu.Unlock()
 	}()
 
-	module, err := template.MakeModule(vars)
+	moduleCtx := template.newModuleContext(vars)
+	moduleCtx.SetImportManager(im)
+
+	module, err := template.makeModuleFromContext(moduleCtx)
 	if err != nil {
 		return nil, err
 	}

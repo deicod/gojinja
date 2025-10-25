@@ -641,7 +641,11 @@ func (e *Evaluator) visitImport(node *nodes.Import) interface{} {
 		return NewError(ErrorTypeTemplate, "no environment available for imports", node.GetPosition(), node)
 	}
 
-	importManager := NewImportManager(e.ctx.environment)
+	importManager := e.ctx.GetImportManager()
+	if importManager == nil {
+		importManager = NewImportManager(e.ctx.environment)
+		e.ctx.SetImportManager(importManager)
+	}
 	namespace, err := importManager.ImportTemplate(e.ctx, templateName, node.WithContext)
 	if err != nil {
 		return NewImportError(templateName, err.Error(), node.GetPosition(), node)
@@ -670,7 +674,11 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 		return NewError(ErrorTypeTemplate, "no environment available for imports", node.GetPosition(), node)
 	}
 
-	importManager := NewImportManager(e.ctx.environment)
+	importManager := e.ctx.GetImportManager()
+	if importManager == nil {
+		importManager = NewImportManager(e.ctx.environment)
+		e.ctx.SetImportManager(importManager)
+	}
 
 	// Prepare macro names to import
 	macroNames := make([]string, len(node.Names))

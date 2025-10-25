@@ -190,6 +190,9 @@ type Context struct {
 	// Error handling
 	errors []error
 
+	// Import handling
+	importManager *ImportManager
+
 	// Concurrency safety
 	mu sync.RWMutex
 }
@@ -317,6 +320,20 @@ func (ctx *Context) Delete(name string) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 	ctx.scope.Delete(name)
+}
+
+// SetImportManager assigns the import manager used by the context
+func (ctx *Context) SetImportManager(manager *ImportManager) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.importManager = manager
+}
+
+// GetImportManager returns the import manager associated with the context
+func (ctx *Context) GetImportManager() *ImportManager {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	return ctx.importManager
 }
 
 // Has checks if a variable exists in the context
