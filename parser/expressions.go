@@ -276,7 +276,7 @@ func (p *Parser) ParseMath2() (nodes.Expr, error) {
 	}
 
 	token := p.stream.Peek()
-	for token.Type == lexer.TokenMul || token.Type == lexer.TokenDiv || token.Type == lexer.TokenMod {
+	for token.Type == lexer.TokenMul || token.Type == lexer.TokenDiv || token.Type == lexer.TokenFloorDiv || token.Type == lexer.TokenMod {
 		opToken := p.stream.Next()
 		right, err := p.ParsePow()
 		if err != nil {
@@ -289,6 +289,8 @@ func (p *Parser) ParseMath2() (nodes.Expr, error) {
 			expr = nodes.NewMul(left, right)
 		case lexer.TokenDiv:
 			expr = nodes.NewDiv(left, right)
+		case lexer.TokenFloorDiv:
+			expr = nodes.NewFloorDiv(left, right)
 		case lexer.TokenMod:
 			expr = nodes.NewMod(left, right)
 		}

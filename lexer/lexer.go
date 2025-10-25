@@ -1205,7 +1205,7 @@ func (l *Lexer) mapOperator(op string) TokenType {
 		"-":  TokenSub,
 		"*":  TokenMul,
 		"/":  TokenDiv,
-		"//": TokenDiv, // TODO: Separate floor division
+		"//": TokenFloorDiv,
 		"%":  TokenMod,
 		"**": TokenPow,
 		"==": TokenComparison,

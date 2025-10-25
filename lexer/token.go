@@ -37,6 +37,7 @@ const (
 	TokenSub
 	TokenMul
 	TokenDiv
+	TokenFloorDiv
 	TokenMod
 	TokenPow
 	TokenNot
@@ -78,6 +79,7 @@ var tokenNames = map[TokenType]string{
 	TokenSub:           "SUB",
 	TokenMul:           "MUL",
 	TokenDiv:           "DIV",
+	TokenFloorDiv:      "FLOORDIV",
 	TokenMod:           "MOD",
 	TokenPow:           "POW",
 	TokenNot:           "NOT",
