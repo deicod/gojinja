@@ -73,3 +73,43 @@ func TestCallBlockNested(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, strings.TrimSpace(result))
 	}
 }
+
+func TestCallBlockKeywordOnlyArguments(t *testing.T) {
+	env := NewEnvironment()
+	templates := map[string]string{
+		"kwonly.html": `{% macro helper() %}{{ caller('World', punctuation='!') }}{% endmacro %}{% call(user, *, punctuation='?') helper() %}{{ punctuation }} {{ user }}{% endcall %}`,
+	}
+	env.SetLoader(NewMapLoader(templates))
+
+	tmpl, err := env.ParseFile("kwonly.html")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	expected := "! World"
+	if strings.TrimSpace(result) != expected {
+		t.Fatalf("expected %q, got %q", expected, strings.TrimSpace(result))
+	}
+}
+
+func TestCallBlockMissingKeywordOnlyArgument(t *testing.T) {
+	env := NewEnvironment()
+	templates := map[string]string{
+		"missing_kw.html": `{% macro helper() %}{{ caller('World') }}{% endmacro %}{% call(user, *, punctuation) helper() %}{{ punctuation }} {{ user }}{% endcall %}`,
+	}
+	env.SetLoader(NewMapLoader(templates))
+
+	tmpl, err := env.ParseFile("missing_kw.html")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	if _, err := tmpl.ExecuteToString(nil); err == nil {
+		t.Fatalf("expected execution error for missing keyword-only argument")
+	}
+}
