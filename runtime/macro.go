@@ -82,25 +82,39 @@ func NewMacroRegistry() *MacroRegistry {
 
 // NewMacro creates a new macro from an AST node
 func NewMacro(macroNode *nodes.Macro, template *Template) *Macro {
-	args := make([]*MacroArgument, len(macroNode.Args))
+	positionalArgs := make([]*MacroArgument, len(macroNode.Args))
+	positionalCount := len(macroNode.Args)
+	defaultsCount := len(macroNode.Defaults)
+
 	for i, arg := range macroNode.Args {
-		// Check if this argument has a default (right-to-left mapping)
-		defaultIndex := len(macroNode.Args) - 1 - i
-		hasDefault := defaultIndex >= 0 && defaultIndex < len(macroNode.Defaults) && macroNode.Defaults[defaultIndex] != nil
-		args[i] = &MacroArgument{
+		defaultIndex := i - (positionalCount - defaultsCount)
+		hasDefault := defaultIndex >= 0 && defaultIndex < defaultsCount && macroNode.Defaults[defaultIndex] != nil
+
+		positionalArgs[i] = &MacroArgument{
 			Name:       arg.Name,
 			HasDefault: hasDefault,
 		}
+
+		if hasDefault {
+			positionalArgs[i].Default = macroNode.Defaults[defaultIndex]
+		}
 	}
 
-	// Set defaults for arguments that have them (right-to-left mapping)
-	for i, arg := range args {
-		if arg.HasDefault {
-			defaultIndex := len(args) - 1 - i
-			if defaultIndex >= 0 && defaultIndex < len(macroNode.Defaults) {
-				arg.Default = macroNode.Defaults[defaultIndex]
-			}
-		}
+	args := make([]*MacroArgument, 0, len(positionalArgs)+2)
+	args = append(args, positionalArgs...)
+
+	if macroNode.VarArg != nil {
+		args = append(args, &MacroArgument{
+			Name:     macroNode.VarArg.Name,
+			Variadic: true,
+		})
+	}
+
+	if macroNode.KwArg != nil {
+		args = append(args, &MacroArgument{
+			Name:    macroNode.KwArg.Name,
+			Keyword: true,
+		})
 	}
 
 	macro := &Macro{
@@ -302,85 +316,103 @@ func (m *Macro) Execute(ctx *Context, args []interface{}, kwargs map[string]inte
 
 // bindArguments binds function arguments to macro parameters
 func (m *Macro) bindArguments(ctx *Context, args []interface{}, kwargs map[string]interface{}) error {
-	// Convert arguments to a more manageable form
-	argMap := make(map[string]interface{})
-	var positionalArgs []interface{}
-	var keywordArgs []string
+	if kwargs == nil {
+		kwargs = map[string]interface{}{}
+	}
 
-	// First, process positional arguments to identify which are positional
-	for i, arg := range m.Arguments {
-		if !arg.Keyword && !arg.Variadic {
-			if i < len(args) {
-				argMap[arg.Name] = args[i]
-				positionalArgs = append(positionalArgs, arg.Name)
-			}
+	argValues := make(map[string]interface{})
+	var positionalArgs []*MacroArgument
+	var variadicArg *MacroArgument
+	var keywordCollector *MacroArgument
+
+	for _, arg := range m.Arguments {
+		switch {
+		case arg.Variadic:
+			variadicArg = arg
+		case arg.Keyword:
+			keywordCollector = arg
+		default:
+			positionalArgs = append(positionalArgs, arg)
 		}
 	}
 
-	// Process keyword arguments
+	// Bind positional arguments to positional parameters first
+	for idx, param := range positionalArgs {
+		if idx < len(args) {
+			argValues[param.Name] = args[idx]
+		}
+	}
+
+	// Handle extra positional arguments
+	if len(args) > len(positionalArgs) {
+		if variadicArg == nil {
+			return NewMacroError(m.Name,
+				fmt.Sprintf("too many positional arguments (got %d, expected at most %d)", len(args), len(positionalArgs)),
+				m.Position, nil)
+		}
+		extras := make([]interface{}, len(args)-len(positionalArgs))
+		copy(extras, args[len(positionalArgs):])
+		argValues[variadicArg.Name] = extras
+	} else if variadicArg != nil {
+		argValues[variadicArg.Name] = []interface{}{}
+	}
+
+	// Prepare keyword collector map if present
+	extraKeywords := make(map[string]interface{})
+
+	// Bind keyword arguments
 	for key, value := range kwargs {
 		if key == "__caller" {
 			continue
 		}
-		argMap[key] = value
-		keywordArgs = append(keywordArgs, key)
-	}
 
-	// Handle variadic arguments (if supported)
-	var variadicArgs []interface{}
-
-	// Bind remaining positional arguments to variadic parameter if exists
-	for i, arg := range m.Arguments {
-		if arg.Variadic && i < len(args) {
-			// Collect remaining positional args
-			for j := i; j < len(args); j++ {
-				variadicArgs = append(variadicArgs, args[j])
-			}
-			argMap[arg.Name] = variadicArgs
-			break
-		}
-	}
-
-	// Apply defaults for missing arguments
-	for _, arg := range m.Arguments {
-		if _, exists := argMap[arg.Name]; !exists {
-			if arg.HasDefault && arg.Default != nil {
-				// Evaluate default expression
-				evaluator := NewEvaluator(ctx)
-				defaultValue := evaluator.Evaluate(arg.Default.(nodes.Expr))
-				if err, ok := defaultValue.(error); ok {
-					return err
-				}
-				argMap[arg.Name] = defaultValue
-			} else if !arg.Variadic && !arg.Keyword {
+		if param := m.argumentByName(key); param != nil && !param.Variadic && !param.Keyword {
+			if _, exists := argValues[key]; exists {
 				return NewMacroError(m.Name,
-					fmt.Sprintf("missing required argument '%s'", arg.Name),
+					fmt.Sprintf("multiple values for argument '%s'", key),
 					m.Position, nil)
 			}
-		}
-	}
-
-	// Set all arguments in the context
-	for name, value := range argMap {
-		ctx.Set(name, value)
-	}
-
-	// Check for unexpected arguments
-	expectedArgs := make(map[string]bool)
-	for _, arg := range m.Arguments {
-		expectedArgs[arg.Name] = true
-	}
-
-	// Check for unexpected keyword arguments
-	for key := range kwargs {
-		if key == "__caller" {
+			argValues[key] = value
 			continue
 		}
-		if !expectedArgs[key] {
-			return NewMacroError(m.Name,
-				fmt.Sprintf("unexpected keyword argument '%s'", key),
-				m.Position, nil)
+
+		if keywordCollector != nil {
+			extraKeywords[key] = value
+			continue
 		}
+
+		return NewMacroError(m.Name,
+			fmt.Sprintf("unexpected keyword argument '%s'", key),
+			m.Position, nil)
+	}
+
+	if keywordCollector != nil {
+		argValues[keywordCollector.Name] = extraKeywords
+	}
+
+	// Apply defaults for missing positional parameters
+	for _, param := range positionalArgs {
+		if _, exists := argValues[param.Name]; exists {
+			continue
+		}
+
+		if param.HasDefault && param.Default != nil {
+			evaluator := NewEvaluator(ctx)
+			defaultValue := evaluator.Evaluate(param.Default.(nodes.Expr))
+			if err, ok := defaultValue.(error); ok {
+				return err
+			}
+			argValues[param.Name] = defaultValue
+			continue
+		}
+
+		return NewMacroError(m.Name,
+			fmt.Sprintf("missing required argument '%s'", param.Name),
+			m.Position, nil)
+	}
+
+	for name, value := range argValues {
+		ctx.Set(name, value)
 	}
 
 	if m.callerFunc != nil {
@@ -513,70 +545,83 @@ func (m *Macro) HasArgument(name string) bool {
 	return false
 }
 
+// argumentByName returns the macro argument with the given name, if present
+func (m *Macro) argumentByName(name string) *MacroArgument {
+	for _, arg := range m.Arguments {
+		if arg.Name == name {
+			return arg
+		}
+	}
+	return nil
+}
+
 // ValidateCall validates a macro call with the given arguments
 func (m *Macro) ValidateCall(args []interface{}, kwargs map[string]interface{}) error {
-	// Check for too many positional arguments
-	positionalCount := 0
+	if kwargs == nil {
+		kwargs = map[string]interface{}{}
+	}
+
+	var positionalArgs []*MacroArgument
+	var variadicArg *MacroArgument
+	var keywordCollector *MacroArgument
+
 	for _, arg := range m.Arguments {
-		if !arg.Keyword && !arg.Variadic {
-			positionalCount++
+		switch {
+		case arg.Variadic:
+			variadicArg = arg
+		case arg.Keyword:
+			keywordCollector = arg
+		default:
+			positionalArgs = append(positionalArgs, arg)
 		}
 	}
 
-	if len(args) > positionalCount {
-		// Check if there's a variadic argument
-		hasVariadic := false
-		for _, arg := range m.Arguments {
-			if arg.Variadic {
-				hasVariadic = true
-				break
-			}
-		}
-		if !hasVariadic {
-			return NewMacroError(m.Name,
-				fmt.Sprintf("too many positional arguments (got %d, expected at most %d)",
-					len(args), positionalCount), m.Position, nil)
-		}
+	if len(args) > len(positionalArgs) && variadicArg == nil {
+		return NewMacroError(m.Name,
+			fmt.Sprintf("too many positional arguments (got %d, expected at most %d)", len(args), len(positionalArgs)),
+			m.Position, nil)
 	}
 
-	// Check for unexpected keyword arguments
-	expectedArgs := make(map[string]bool)
-	for _, arg := range m.Arguments {
-		expectedArgs[arg.Name] = true
+	provided := make(map[string]bool)
+
+	for idx, param := range positionalArgs {
+		if idx < len(args) {
+			provided[param.Name] = true
+		}
 	}
 
 	for key := range kwargs {
-		if !expectedArgs[key] {
-			return NewMacroError(m.Name,
-				fmt.Sprintf("unexpected keyword argument '%s'", key),
-				m.Position, nil)
+		if key == "__caller" {
+			continue
 		}
-	}
 
-	// Check for missing required arguments
-	// Build a map of provided arguments
-	providedArgs := make(map[string]bool)
-
-	// Add positional arguments
-	for i := 0; i < len(args) && i < len(m.Arguments); i++ {
-		if !m.Arguments[i].Keyword && !m.Arguments[i].Variadic {
-			providedArgs[m.Arguments[i].Name] = true
-		}
-	}
-
-	// Add keyword arguments
-	for key := range kwargs {
-		providedArgs[key] = true
-	}
-
-	// Check each argument to see if required ones are provided
-	for _, arg := range m.Arguments {
-		if !arg.HasDefault && !arg.Variadic && !arg.Keyword {
-			if !providedArgs[arg.Name] {
+		if param := m.argumentByName(key); param != nil && !param.Variadic && !param.Keyword {
+			if provided[key] {
 				return NewMacroError(m.Name,
-					fmt.Sprintf("missing required argument '%s'", arg.Name),
+					fmt.Sprintf("multiple values for argument '%s'", key),
 					m.Position, nil)
 			}
+			provided[key] = true
+			continue
+		}
+
+		if keywordCollector != nil {
+			continue
+		}
+
+		return NewMacroError(m.Name,
+			fmt.Sprintf("unexpected keyword argument '%s'", key),
+			m.Position, nil)
+	}
+
+	for _, param := range positionalArgs {
+		if param.HasDefault {
+			continue
+		}
+		if !provided[param.Name] {
+			return NewMacroError(m.Name,
+				fmt.Sprintf("missing required argument '%s'", param.Name),
+				m.Position, nil)
 		}
 	}
 

@@ -199,6 +199,33 @@ func TestMacroValidation(t *testing.T) {
 	}
 }
 
+func TestMacroValidationWithVarArgs(t *testing.T) {
+	macro := &Macro{
+		Name: "variadic",
+		Arguments: []*MacroArgument{
+			{Name: "required"},
+			{Name: "rest", Variadic: true},
+			{Name: "kw", Keyword: true},
+		},
+	}
+
+	if err := macro.ValidateCall([]interface{}{"value", "extra1", "extra2"}, map[string]interface{}{"foo": 1}); err != nil {
+		t.Fatalf("expected variadic call to be valid: %v", err)
+	}
+
+	if err := macro.ValidateCall([]interface{}{"value"}, map[string]interface{}{"required": "again"}); err == nil {
+		t.Fatal("expected duplicate assignment error")
+	}
+
+	if err := macro.ValidateCall([]interface{}{}, map[string]interface{}{"kw": 1}); err == nil {
+		t.Fatal("expected missing required argument error")
+	}
+
+	if err := macro.ValidateCall([]interface{}{"value"}, map[string]interface{}{"unexpected": true}); err != nil {
+		t.Fatalf("unexpected keyword arguments should be accepted when collector present: %v", err)
+	}
+}
+
 func TestImportManager(t *testing.T) {
 	env := NewEnvironment()
 	importManager := NewImportManager(env)
@@ -278,7 +305,7 @@ func TestMacroArgumentBinding(t *testing.T) {
 		Arguments: []*MacroArgument{
 			{Name: "pos1"},
 			{Name: "pos2"},
-			{Name: "kw1", Keyword: true},
+			{Name: "kwargs", Keyword: true},
 			{Name: "default1", HasDefault: true, Default: &nodes.Const{Value: "default_value"}},
 		},
 		Defaults: []nodes.Expr{&nodes.Const{Value: "default_value"}},
@@ -291,7 +318,11 @@ func TestMacroArgumentBinding(t *testing.T) {
 							&nodes.TemplateData{Data: "|"},
 							&nodes.Name{Name: "pos2", Ctx: nodes.CtxLoad},
 							&nodes.TemplateData{Data: "|"},
-							&nodes.Name{Name: "kw1", Ctx: nodes.CtxLoad},
+							&nodes.Getitem{
+								Node: &nodes.Name{Name: "kwargs", Ctx: nodes.CtxLoad},
+								Arg:  &nodes.Const{Value: "kw1"},
+								Ctx:  nodes.CtxLoad,
+							},
 							&nodes.TemplateData{Data: "|"},
 							&nodes.Name{Name: "default1", Ctx: nodes.CtxLoad},
 						},
@@ -328,6 +359,67 @@ func TestMacroArgumentBinding(t *testing.T) {
 	expected = "val1|val2|val3|custom_value"
 	if strings.TrimSpace(result.(string)) != expected {
 		t.Errorf("Expected '%s', got '%s'", expected, strings.TrimSpace(result.(string)))
+	}
+}
+
+func TestMacroVarArgsAndKwargsBinding(t *testing.T) {
+	macro := &Macro{
+		Name: "with_varargs",
+		Arguments: []*MacroArgument{
+			{Name: "pos", HasDefault: false},
+			{Name: "opt", HasDefault: true, Default: &nodes.Const{Value: "opt_default"}},
+			{Name: "rest", Variadic: true},
+			{Name: "kw", Keyword: true},
+		},
+		Defaults: []nodes.Expr{&nodes.Const{Value: "opt_default"}},
+		Body: []nodes.Node{
+			&nodes.Output{
+				Nodes: []nodes.Expr{
+					&nodes.Concat{
+						Nodes: []nodes.Expr{
+							&nodes.Name{Name: "pos", Ctx: nodes.CtxLoad},
+							&nodes.TemplateData{Data: "|"},
+							&nodes.Name{Name: "opt", Ctx: nodes.CtxLoad},
+							&nodes.TemplateData{Data: "|"},
+							&nodes.Getitem{
+								Node: &nodes.Name{Name: "rest", Ctx: nodes.CtxLoad},
+								Arg:  &nodes.Const{Value: int64(0)},
+								Ctx:  nodes.CtxLoad,
+							},
+							&nodes.TemplateData{Data: "|"},
+							&nodes.Getitem{
+								Node: &nodes.Name{Name: "kw", Ctx: nodes.CtxLoad},
+								Arg:  &nodes.Const{Value: "x"},
+								Ctx:  nodes.CtxLoad,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := NewContextWithEnvironment(NewEnvironment(), map[string]interface{}{})
+
+	result, err := macro.CallKwargs(ctx, []interface{}{"P", "override", "extra"}, map[string]interface{}{
+		"x": "X",
+		"y": "Y",
+	})
+	if err != nil {
+		t.Fatalf("Failed to execute macro with varargs: %v", err)
+	}
+
+	expected := "P|override|extra|X"
+	if strings.TrimSpace(result.(string)) != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, strings.TrimSpace(result.(string)))
+	}
+
+	// Duplicate assignment should raise an error
+	_, err = macro.CallKwargs(ctx, []interface{}{"P"}, map[string]interface{}{
+		"pos": "dup",
+	})
+	if err == nil {
+		t.Fatal("expected duplicate positional/keyword error")
 	}
 }
 
@@ -480,7 +572,7 @@ func TestMacroErrors(t *testing.T) {
 		Arguments: []*MacroArgument{
 			{Name: "required_arg"},
 		},
-		Body: []nodes.Node{},
+		Body:     []nodes.Node{},
 		Position: nodes.Position{Line: 10, Column: 5},
 	}
 
@@ -540,7 +632,7 @@ func TestMacroComplexScenario(t *testing.T) {
 
 	loader := NewMapLoader(map[string]string{
 		"macros.html": macrosTemplate,
-		"main.html":  mainTemplate,
+		"main.html":   mainTemplate,
 	})
 	env.SetLoader(loader)
 

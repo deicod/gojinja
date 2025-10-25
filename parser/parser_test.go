@@ -316,6 +316,45 @@ func TestParser_BasicStatements(t *testing.T) {
 	}
 }
 
+func TestParser_MacroVarArgs(t *testing.T) {
+	env := &Environment{}
+
+	parser, err := NewParser(env, "{% macro test(a, b=1, *args, **kwargs) %}{% endmacro %}", "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("failed to create parser: %v", err)
+	}
+
+	tmpl, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single node in template body, got %d", len(tmpl.Body))
+	}
+
+	macro, ok := tmpl.Body[0].(*nodes.Macro)
+	if !ok {
+		t.Fatalf("expected Macro node, got %T", tmpl.Body[0])
+	}
+
+	if macro.VarArg == nil || macro.VarArg.Name != "args" {
+		t.Fatalf("expected vararg name 'args', got %+v", macro.VarArg)
+	}
+
+	if macro.KwArg == nil || macro.KwArg.Name != "kwargs" {
+		t.Fatalf("expected kwarg name 'kwargs', got %+v", macro.KwArg)
+	}
+
+	if len(macro.Args) != 2 {
+		t.Fatalf("expected two positional args, got %d", len(macro.Args))
+	}
+
+	if len(macro.Defaults) != 1 {
+		t.Fatalf("expected one default, got %d", len(macro.Defaults))
+	}
+}
+
 func TestParserLineStatements(t *testing.T) {
 	env := &Environment{LineStatementPrefix: "#"}
 

@@ -521,6 +521,9 @@ func (p *Parser) parseSignature(node interface{}) error {
 
 	var args []*nodes.Name
 	var defaults []nodes.Expr
+	var varArg *nodes.Name
+	var kwArg *nodes.Name
+	seenDefault := false
 
 	for p.stream.Peek().Type != lexer.TokenRightParen {
 		if len(args) > 0 {
@@ -533,12 +536,68 @@ func (p *Parser) parseSignature(node interface{}) error {
 			}
 		}
 
-		arg, err := p.ParseAssignTargetWithExtraRules(false, false, nil, false)
-		if err != nil {
-			return err
-		}
+		switch p.stream.Peek().Type {
+		case lexer.TokenMul:
+			p.stream.Next()
 
-		if name, ok := arg.(*nodes.Name); ok {
+			if p.stream.Peek().Type == lexer.TokenMul {
+				// Handle ``**kwargs`` written as ``*`` ``*`` for robustness, though lexer should emit TokenPow
+				if kwArg != nil {
+					return p.Fail("duplicate keyword argument collector", p.stream.Peek().Line, &TemplateSyntaxError{})
+				}
+				p.stream.Next()
+				nameToken, err := p.Expect(lexer.TokenName)
+				if err != nil {
+					return err
+				}
+				kwArg = &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+				continue
+			}
+
+			if varArg != nil {
+				return p.Fail("duplicate varargs parameter", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
+
+			nameToken, err := p.Expect(lexer.TokenName)
+			if err != nil {
+				return err
+			}
+			name := &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+			varArg = name
+
+			// After a bare ``*`` marker without name, keyword-only parameters would follow
+			if nameToken.Value == "" {
+				return p.Fail("expected name after '*' in signature", nameToken.Line, &TemplateSyntaxError{})
+			}
+
+		case lexer.TokenPow:
+			p.stream.Next()
+			if kwArg != nil {
+				return p.Fail("duplicate keyword argument collector", p.stream.Peek().Line, &TemplateSyntaxError{})
+			}
+
+			nameToken, err := p.Expect(lexer.TokenName)
+			if err != nil {
+				return err
+			}
+			kwArg = &nodes.Name{Name: nameToken.Value, Ctx: nodes.CtxParam}
+
+		default:
+			arg, err := p.ParseAssignTargetWithExtraRules(false, false, nil, false)
+			if err != nil {
+				return err
+			}
+
+			name, ok := arg.(*nodes.Name)
+			if !ok {
+				return p.Fail("expected name in argument list", arg.GetPosition().Line, &TemplateSyntaxError{})
+			}
+
+			if varArg != nil {
+				// Keyword-only parameters after ``*`` are not yet supported
+				return p.Fail("keyword-only parameters are not supported", name.GetPosition().Line, &TemplateSyntaxError{})
+			}
+
 			name.Ctx = nodes.CtxParam
 			args = append(args, name)
 
@@ -548,11 +607,12 @@ func (p *Parser) parseSignature(node interface{}) error {
 					return err
 				}
 				defaults = append(defaults, defaultExpr)
-			} else if len(defaults) > 0 {
-				return p.Fail("non-default argument follows default argument", name.GetPosition().Line, &TemplateSyntaxError{})
+				seenDefault = true
+			} else {
+				if seenDefault {
+					return p.Fail("non-default argument follows default argument", name.GetPosition().Line, &TemplateSyntaxError{})
+				}
 			}
-		} else {
-			return p.Fail("expected name in argument list", arg.GetPosition().Line, &TemplateSyntaxError{})
 		}
 	}
 
@@ -565,9 +625,13 @@ func (p *Parser) parseSignature(node interface{}) error {
 	case *nodes.Macro:
 		n.Args = args
 		n.Defaults = defaults
+		n.VarArg = varArg
+		n.KwArg = kwArg
 	case *nodes.CallBlock:
 		n.Args = args
 		n.Defaults = defaults
+		n.VarArg = varArg
+		n.KwArg = kwArg
 	default:
 		return fmt.Errorf("unsupported node type for signature")
 	}
