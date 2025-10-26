@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -1151,6 +1152,115 @@ func (env *Environment) LoadTemplate(name string) (*Template, error) {
 
 	// Parse template
 	return env.parseTemplateFromString(source, name)
+}
+
+// GetTemplate retrieves a template by name using the configured loader and cache.
+// It behaves like Jinja2's get_template helper and is a convenience wrapper
+// around LoadTemplate.
+func (env *Environment) GetTemplate(name string) (*Template, error) {
+	if name == "" {
+		return nil, NewError(ErrorTypeTemplate, "template name cannot be empty", nodes.Position{}, nil)
+	}
+	return env.LoadTemplate(name)
+}
+
+// SelectTemplate iterates over the provided template names and returns the
+// first one that can be successfully loaded. If none of the candidates can be
+// located a TemplatesNotFoundError mirroring Jinja2's behaviour is returned.
+func (env *Environment) SelectTemplate(names []string) (*Template, error) {
+	if len(names) == 0 {
+		return nil, NewError(ErrorTypeTemplate, "select_template requires at least one template name", nodes.Position{}, nil)
+	}
+
+	var (
+		tried   []string
+		lastErr error
+	)
+
+	for _, name := range names {
+		tmpl, err := env.LoadTemplate(name)
+		if err == nil {
+			return tmpl, nil
+		}
+
+		if isTemplateNotFoundError(err) {
+			var single *TemplateNotFoundError
+			if errors.As(err, &single) && single != nil && len(single.Tried) > 0 {
+				tried = append(tried, single.Tried...)
+			} else {
+				tried = append(tried, name)
+			}
+			lastErr = err
+			continue
+		}
+
+		return nil, err
+	}
+
+	if lastErr != nil {
+		if len(names) == 1 {
+			return nil, lastErr
+		}
+		return nil, NewTemplatesNotFound(names, tried, lastErr)
+	}
+
+	return nil, NewError(ErrorTypeTemplate, "no templates found", nodes.Position{}, nil)
+}
+
+// GetOrSelectTemplate accepts either a single template name or a list of
+// template names and resolves them using GetTemplate/SelectTemplate. This
+// mirrors Jinja2's get_or_select_template helper.
+func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, error) {
+	switch v := target.(type) {
+	case string:
+		return env.GetTemplate(v)
+	case []string:
+		return env.SelectTemplate(v)
+	case []interface{}:
+		names := make([]string, 0, len(v))
+		for _, item := range v {
+			str, ok := item.(string)
+			if !ok {
+				return nil, NewError(ErrorTypeTemplate,
+					fmt.Sprintf("template name list must contain strings, got %T", item),
+					nodes.Position{}, nil)
+			}
+			names = append(names, str)
+		}
+		return env.SelectTemplate(names)
+	default:
+		return nil, NewError(ErrorTypeTemplate,
+			fmt.Sprintf("unsupported template target type %T", target),
+			nodes.Position{}, nil)
+	}
+}
+
+// FromString parses the provided template source using the environment's
+// configuration without consulting the loader. This is equivalent to Jinja2's
+// from_string helper and returns a ready-to-render template.
+func (env *Environment) FromString(source string) (*Template, error) {
+	return env.ParseString(source, "from_string")
+}
+
+// JoinPath combines a template path with its parent template path, matching
+// Jinja2's relative import and extends resolution rules.
+func (env *Environment) JoinPath(template, parent string) (string, error) {
+	if template == "" {
+		return "", NewError(ErrorTypeTemplate, "template name cannot be empty", nodes.Position{}, nil)
+	}
+
+	cleaned := path.Clean(template)
+	if strings.HasPrefix(template, "/") || parent == "" {
+		return cleaned, nil
+	}
+
+	parentDir := path.Dir(parent)
+	if parentDir == "." {
+		return cleaned, nil
+	}
+
+	joined := path.Join(parentDir, template)
+	return path.Clean(joined), nil
 }
 
 // ClearCache clears the template cache
