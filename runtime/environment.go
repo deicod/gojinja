@@ -223,6 +223,7 @@ type Environment struct {
 	newlineSequence     string
 	lineStatementPrefix string
 	lineCommentPrefix   string
+	enableAsync         bool
 	finalize            FinalizeFunc
 	undefinedFactory    UndefinedFactory
 
@@ -261,6 +262,7 @@ func NewEnvironment() *Environment {
 		keepTrailingNewline: false,
 		lineStatementPrefix: "",
 		lineCommentPrefix:   "",
+		enableAsync:         false,
 		extensions:          []parser.Extension{},
 		policies:            make(map[string]interface{}),
 		sandboxed:           false,
@@ -456,6 +458,21 @@ func (env *Environment) NewlineSequence() string {
 		return "\n"
 	}
 	return env.newlineSequence
+}
+
+// SetEnableAsync toggles support for async-aware syntax such as "async for" and "async with".
+// When disabled, encountering async-prefixed statements results in a syntax error during parsing.
+func (env *Environment) SetEnableAsync(enabled bool) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.enableAsync = enabled
+}
+
+// IsAsyncEnabled reports whether async-aware syntax is permitted for templates parsed by this environment.
+func (env *Environment) IsAsyncEnabled() bool {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+	return env.enableAsync
 }
 
 // SetLineStatementPrefix configures the prefix that marks line statements (e.g. "#")
@@ -1330,6 +1347,7 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 		LineStatementPrefix: env.lineStatementPrefix,
 		LineCommentPrefix:   env.lineCommentPrefix,
 		Extensions:          env.Extensions(),
+		EnableAsync:         env.IsAsyncEnabled(),
 	}
 
 	// Parse the template

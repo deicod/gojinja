@@ -22,6 +22,30 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 		}
 	}()
 
+	// Handle async-prefixed statements
+	if token.Value == "async" {
+		if p.environment == nil || !p.environment.EnableAsync {
+			return nil, p.Fail("async statements require enable_async mode", token.Line, &TemplateSyntaxError{})
+		}
+
+		p.stream.Next() // consume 'async'
+		next := p.stream.Peek()
+		if next.Type != lexer.TokenName {
+			return nil, p.Fail("expected 'for' or 'with' after 'async'", next.Line, &TemplateSyntaxError{})
+		}
+
+		switch next.Value {
+		case "for":
+			p.tagStack[len(p.tagStack)-1] = "for"
+			return p.ParseFor(true)
+		case "with":
+			p.tagStack[len(p.tagStack)-1] = "with"
+			return p.ParseWith(true)
+		default:
+			return nil, p.Fail("expected 'for' or 'with' after 'async'", next.Line, &TemplateSyntaxError{})
+		}
+	}
+
 	// Check for built-in statement keywords
 	if statementKeywords[token.Value] {
 		switch token.Value {
@@ -34,7 +58,7 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 		case "spaceless":
 			return p.ParseSpaceless()
 		case "for":
-			return p.ParseFor()
+			return p.ParseFor(false)
 		case "if":
 			return p.ParseIf()
 		case "block":
@@ -52,7 +76,7 @@ func (p *Parser) ParseStatement() (nodes.Node, error) {
 		case "set":
 			return p.ParseSet()
 		case "with":
-			return p.ParseWith()
+			return p.ParseWith(false)
 		case "namespace":
 			return p.ParseNamespace()
 		case "export":
@@ -263,7 +287,7 @@ func (p *Parser) ParseSet() (nodes.Node, error) {
 }
 
 // ParseFor parses a for loop
-func (p *Parser) ParseFor() (nodes.Node, error) {
+func (p *Parser) ParseFor(async bool) (nodes.Node, error) {
 	token, err := p.stream.Expect(lexer.TokenName)
 	if err != nil {
 		return nil, err
@@ -318,6 +342,7 @@ func (p *Parser) ParseFor() (nodes.Node, error) {
 		Else:      elseBody,
 		Test:      test,
 		Recursive: recursive,
+		Async:     async,
 	}
 	forNode.SetPosition(nodes.NewPosition(lineno, 0))
 	return forNode, nil
@@ -448,7 +473,7 @@ func (p *Parser) ParseExtends() (nodes.Node, error) {
 }
 
 // ParseWith parses a with statement
-func (p *Parser) ParseWith() (nodes.Node, error) {
+func (p *Parser) ParseWith(async bool) (nodes.Node, error) {
 	lineno := p.stream.Next().Line // consume 'with'
 
 	var targets []nodes.Expr
@@ -488,6 +513,7 @@ func (p *Parser) ParseWith() (nodes.Node, error) {
 		Targets: targets,
 		Values:  values,
 		Body:    body,
+		Async:   async,
 	}
 	with.SetPosition(nodes.NewPosition(lineno, 0))
 	return with, nil

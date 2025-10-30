@@ -5,7 +5,7 @@
 1. **Translation Tags** *(Completed)*
    - `{% trans %}`, `{% pluralize %}`, and `{% blocktrans %}` honour context strings, trimming toggles, and pluralisation hooks at runtime.
    - Regression tests cover translation assignments, plural aliases, trimming, and contextual gettext usage.
-2. **Async Control Flow**
+2. **Async Control Flow** *(Completed)*
    - Parse and evaluate `async for` / `async with` blocks under an `enable_async` switch.
    - Provide no-op fallbacks in synchronous environments to ease migration.
 3. **Conformance Harness**

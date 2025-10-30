@@ -51,6 +51,7 @@ type Environment struct {
 	KeepTrailingNewline bool
 	LineStatementPrefix string
 	LineCommentPrefix   string
+	EnableAsync         bool
 }
 
 // Parser represents the central parsing class Jinja uses

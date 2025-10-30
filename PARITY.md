@@ -8,8 +8,7 @@
 - Template inheritance implements block resolution and `super()` lookups in line with Jinja2 (`runtime/template.go`).
 - Extension hooks allow custom tags to be registered at the environment level, and participate in parsing (`runtime/environment.go`, `parser/parser.go`).
 - Translation tags (`{% trans %}`/`{% blocktrans %}`) mirror Jinja2's context, trimming, and pluralisation semantics with runtime gettext/npgettext dispatch (`parser/statements.go`, `runtime/evaluator.go`).
-
-**Remaining gaps**: async constructs (`async for` / `async with`) are not yet implemented.
+- Async control flow tags (`async for`, `async with`) are parsed when `enable_async` is activated on the environment and execute with synchronous fallbacks that match Jinja2's behaviour in non-async contexts (`parser/core.go`, `runtime/environment.go`, `runtime/evaluator.go`).
 
 ## Expression & Assignment Support
 

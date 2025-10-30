@@ -574,6 +574,43 @@ func TestEnvironmentFeatures(t *testing.T) {
 	})
 }
 
+func TestAsyncStatements(t *testing.T) {
+	env := NewEnvironment()
+
+	if _, err := env.ParseString(`{% async for item in items %}{% endfor %}`, "test"); err == nil {
+		t.Fatalf("expected parse error for async statements when enable_async is disabled")
+	}
+
+	env.SetEnableAsync(true)
+
+	tmpl, err := env.ParseString(`{% async for item in items %}{{ item }}{% endfor %}`, "async_for")
+	if err != nil {
+		t.Fatalf("failed to parse async for template: %v", err)
+	}
+
+	result, err := tmpl.ExecuteToString(map[string]interface{}{
+		"items": []int{1, 2, 3},
+	})
+	if err != nil {
+		t.Fatalf("failed to execute async for template: %v", err)
+	}
+	if strings.TrimSpace(result) != "123" {
+		t.Fatalf("expected concatenated output '123', got %q", strings.TrimSpace(result))
+	}
+
+	withTemplate, err := env.ParseString(`{% async with value = 5 %}{{ value }}{% endwith %}`, "async_with")
+	if err != nil {
+		t.Fatalf("failed to parse async with template: %v", err)
+	}
+	withResult, err := withTemplate.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("failed to execute async with template: %v", err)
+	}
+	if strings.TrimSpace(withResult) != "5" {
+		t.Fatalf("expected output '5', got %q", strings.TrimSpace(withResult))
+	}
+}
+
 func TestContextScoping(t *testing.T) {
 	t.Run("variable shadowing", func(t *testing.T) {
 		template := "{% set x = 'outer' %}{{ x }}{% set x = 'inner' %}{{ x }}"
