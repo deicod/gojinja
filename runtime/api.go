@@ -30,6 +30,7 @@ func (env *Environment) ParseString(templateString, name string) (*Template, err
 		LineStatementPrefix: env.lineStatementPrefix,
 		LineCommentPrefix:   env.lineCommentPrefix,
 		Extensions:          env.Extensions(),
+		EnableAsync:         env.IsAsyncEnabled(),
 	}
 
 	// Parse template using the parser

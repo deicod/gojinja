@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/deicod/gojinja/nodes"
@@ -313,6 +314,53 @@ func TestParser_BasicStatements(t *testing.T) {
 
 			tt.validate(t, tmpl)
 		})
+	}
+}
+
+func TestParser_AsyncStatements(t *testing.T) {
+	template := `{% async for item in items %}{{ item }}{% endfor %}`
+	if _, err := ParseTemplateWithEnv(&Environment{}, template, "test", "test.html"); err == nil {
+		t.Fatalf("expected error when parsing async statements without enable_async")
+	}
+
+	asyncEnv := &Environment{EnableAsync: true}
+	tmpl, err := ParseTemplateWithEnv(asyncEnv, template, "test", "test.html")
+	if err != nil {
+		t.Fatalf("unexpected error parsing async for: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single body node, got %d", len(tmpl.Body))
+	}
+	forStmt, ok := tmpl.Body[0].(*nodes.For)
+	if !ok {
+		t.Fatalf("expected For node, got %T", tmpl.Body[0])
+	}
+	if !forStmt.Async {
+		t.Fatalf("expected async flag to be set on async for")
+	}
+
+	withTemplate := `{% async with value = 5 %}{{ value }}{% endwith %}`
+	tmpl, err = ParseTemplateWithEnv(asyncEnv, withTemplate, "test", "test.html")
+	if err != nil {
+		t.Fatalf("unexpected error parsing async with: %v", err)
+	}
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single body node, got %d", len(tmpl.Body))
+	}
+	withStmt, ok := tmpl.Body[0].(*nodes.With)
+	if !ok {
+		t.Fatalf("expected With node, got %T", tmpl.Body[0])
+	}
+	if !withStmt.Async {
+		t.Fatalf("expected async flag to be set on async with")
+	}
+
+	// Verify error message mentions async when disabled
+	if _, err := ParseTemplateWithEnv(&Environment{}, `{% async with value = 5 %}{% endwith %}`, "test", "test.html"); err != nil {
+		if !strings.Contains(err.Error(), "async") {
+			t.Fatalf("expected error message to mention async, got %v", err)
+		}
 	}
 }
 

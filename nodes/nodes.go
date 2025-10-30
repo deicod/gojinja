@@ -274,6 +274,7 @@ type For struct {
 	Else      []Node `json:"else"`
 	Test      Expr   `json:"test"`
 	Recursive bool   `json:"recursive"`
+	Async     bool   `json:"async"`
 }
 
 func (f *For) Accept(visitor Visitor) interface{} {
@@ -300,8 +301,8 @@ func (f *For) GetChildren() []Node {
 }
 
 func (f *For) String() string {
-	return fmt.Sprintf("For(target=%v, iter=%v, body=%v, else=%v, test=%v, recursive=%t)",
-		f.Target, f.Iter, f.Body, f.Else, f.Test, f.Recursive)
+	return fmt.Sprintf("For(target=%v, iter=%v, body=%v, else=%v, test=%v, recursive=%t, async=%t)",
+		f.Target, f.Iter, f.Body, f.Else, f.Test, f.Recursive, f.Async)
 }
 
 // If represents an if statement
@@ -495,6 +496,7 @@ type With struct {
 	Targets []Expr `json:"targets"`
 	Values  []Expr `json:"values"`
 	Body    []Node `json:"body"`
+	Async   bool   `json:"async"`
 }
 
 func (w *With) Accept(visitor Visitor) interface{} {
@@ -522,8 +524,8 @@ func (w *With) GetChildren() []Node {
 }
 
 func (w *With) String() string {
-	return fmt.Sprintf("With(targets=%v, values=%v, body=%v)",
-		w.Targets, w.Values, w.Body)
+	return fmt.Sprintf("With(targets=%v, values=%v, body=%v, async=%t)",
+		w.Targets, w.Values, w.Body, w.Async)
 }
 
 // Namespace represents a namespace block that exposes a mutable namespace value
