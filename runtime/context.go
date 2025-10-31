@@ -24,7 +24,8 @@ type LoopContext struct {
 	Depth     int         `json:"depth"`
 	Depth0    int         `json:"depth0"`
 	Changed   bool        `json:"changed"`
-	Cycle     interface{} `json:"cycle,omitempty"`
+
+	lastChangedArgs []interface{}
 }
 
 // Scope represents a variable scope
@@ -364,10 +365,12 @@ func (ctx *Context) PushLoop(length, depth int) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
 
+	currentDepth := len(ctx.loopStack) + 1
 	loopCtx := &LoopContext{
-		Length: length,
-		Depth:  depth,
-		Depth0: depth - 1,
+		Length:          length,
+		Depth:           currentDepth,
+		Depth0:          currentDepth - 1,
+		lastChangedArgs: nil,
 	}
 
 	ctx.loopStack = append(ctx.loopStack, loopCtx)
@@ -388,6 +391,11 @@ func (ctx *Context) UpdateLoop(index int, currentItem, prevItem, nextItem interf
 		ctx.currentLoop.Last = index == ctx.currentLoop.Length-1
 		ctx.currentLoop.Previtem = prevItem
 		ctx.currentLoop.Nextitem = nextItem
+		if index == 0 {
+			ctx.currentLoop.Changed = true
+		} else {
+			ctx.currentLoop.Changed = !reflect.DeepEqual(currentItem, prevItem)
+		}
 	}
 }
 
@@ -404,6 +412,49 @@ func (ctx *Context) PopLoop() {
 			ctx.currentLoop = nil
 		}
 	}
+}
+
+// cycle returns the next value in the provided argument list based on the current index.
+// This mirrors Jinja's loop.cycle helper which expects at least one argument and rotates
+// values using the loop's zero-based index.
+func (loop *LoopContext) cycle(args ...interface{}) (interface{}, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("no items for cycling given")
+	}
+
+	length := len(args)
+	// Guard against unexpected negative indexes even though Index0 should never be negative.
+	idx := loop.Index0 % length
+	if idx < 0 {
+		idx += length
+	}
+
+	return args[idx], nil
+}
+
+// changed reports whether the provided values differ from the values supplied on the previous
+// invocation. When called without arguments, the empty tuple is tracked which matches Jinja's
+// behaviour of returning true for the first call and false thereafter.
+func (loop *LoopContext) changed(args ...interface{}) bool {
+	canonical := cloneArgs(args)
+	if loop.lastChangedArgs == nil || !reflect.DeepEqual(loop.lastChangedArgs, canonical) {
+		loop.lastChangedArgs = canonical
+		loop.Changed = true
+		return true
+	}
+
+	loop.Changed = false
+	return false
+}
+
+func cloneArgs(args []interface{}) []interface{} {
+	if len(args) == 0 {
+		return make([]interface{}, 0)
+	}
+
+	cloned := make([]interface{}, len(args))
+	copy(cloned, args)
+	return cloned
 }
 
 // CurrentLoop returns the current loop context
