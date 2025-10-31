@@ -107,6 +107,56 @@ func TestEnvironmentGetOrSelectTemplate(t *testing.T) {
 	}
 }
 
+func TestEnvironmentGetOrSelectTemplateWithTemplateObject(t *testing.T) {
+	env := NewEnvironment()
+
+	tmpl, err := env.NewTemplateWithName("Hello", "inline")
+	if err != nil {
+		t.Fatalf("failed to create inline template: %v", err)
+	}
+
+	resolved, err := env.GetOrSelectTemplate(tmpl)
+	if err != nil {
+		t.Fatalf("unexpected error resolving template object: %v", err)
+	}
+
+	if resolved != tmpl {
+		t.Fatalf("expected returned template to match provided object")
+	}
+}
+
+func TestEnvironmentGetOrSelectTemplateMixedList(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{
+		"fallback.html": "Fallback",
+	}))
+
+	inline, err := env.NewTemplateWithName("Inline", "inline")
+	if err != nil {
+		t.Fatalf("failed to create inline template: %v", err)
+	}
+
+	// Prefer loader result when available
+	resolved, err := env.GetOrSelectTemplate([]interface{}{"fallback.html", inline})
+	if err != nil {
+		t.Fatalf("unexpected error resolving list with loader template: %v", err)
+	}
+
+	if resolved.Name() != "fallback.html" {
+		t.Fatalf("expected loader template to be selected, got %q", resolved.Name())
+	}
+
+	// Fall back to provided template object when names cannot be loaded
+	resolved, err = env.GetOrSelectTemplate([]interface{}{"missing.html", inline})
+	if err != nil {
+		t.Fatalf("unexpected error falling back to template object: %v", err)
+	}
+
+	if resolved != inline {
+		t.Fatalf("expected inline template to be returned when names are missing")
+	}
+}
+
 func TestEnvironmentFromString(t *testing.T) {
 	env := NewEnvironment()
 	tmpl, err := env.FromString("Hello {{ name }}!")
