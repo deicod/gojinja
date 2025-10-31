@@ -886,9 +886,17 @@ func (env *Environment) resolveValue(value interface{}, attr string) (interface{
 		case "depth0":
 			return loopCtx.Depth0, nil
 		case "changed":
-			return loopCtx.Changed, nil
+			return func(args ...interface{}) (interface{}, error) {
+				return loopCtx.changed(args...), nil
+			}, nil
 		case "cycle":
-			return loopCtx.Cycle, nil
+			return func(args ...interface{}) (interface{}, error) {
+				value, err := loopCtx.cycle(args...)
+				if err != nil {
+					return nil, err
+				}
+				return value, nil
+			}, nil
 		}
 	}
 
