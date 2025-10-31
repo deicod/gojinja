@@ -1239,20 +1239,77 @@ func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, erro
 	switch v := target.(type) {
 	case string:
 		return env.GetTemplate(v)
+	case *Template:
+		if v == nil {
+			return nil, NewError(ErrorTypeTemplate, "template reference cannot be nil", nodes.Position{}, nil)
+		}
+		return v, nil
 	case []string:
 		return env.SelectTemplate(v)
+	case []*Template:
+		for _, tmpl := range v {
+			if tmpl == nil {
+				continue
+			}
+			return tmpl, nil
+		}
+		return nil, NewError(ErrorTypeTemplate, "template list must contain at least one non-nil template", nodes.Position{}, nil)
 	case []interface{}:
+		if len(v) == 0 {
+			return nil, NewError(ErrorTypeTemplate, "template list must not be empty", nodes.Position{}, nil)
+		}
+
 		names := make([]string, 0, len(v))
+		tried := make([]string, 0, len(v))
+		var lastErr error
+
 		for _, item := range v {
-			str, ok := item.(string)
-			if !ok {
+			switch value := item.(type) {
+			case string:
+				names = append(names, value)
+				tmpl, err := env.LoadTemplate(value)
+				if err == nil {
+					return tmpl, nil
+				}
+
+				if isTemplateNotFoundError(err) {
+					if err != nil {
+						var single *TemplateNotFoundError
+						if errors.As(err, &single) && single != nil && len(single.Tried) > 0 {
+							tried = append(tried, single.Tried...)
+						} else {
+							tried = append(tried, value)
+						}
+					}
+					lastErr = err
+					continue
+				}
+
+				return nil, err
+			case *Template:
+				if value == nil {
+					return nil, NewError(ErrorTypeTemplate, "template reference cannot be nil", nodes.Position{}, nil)
+				}
+				return value, nil
+			default:
 				return nil, NewError(ErrorTypeTemplate,
-					fmt.Sprintf("template name list must contain strings, got %T", item),
+					fmt.Sprintf("template list must contain strings or *Template, got %T", item),
 					nodes.Position{}, nil)
 			}
-			names = append(names, str)
 		}
-		return env.SelectTemplate(names)
+
+		if len(names) == 0 {
+			return nil, NewError(ErrorTypeTemplate, "template list must contain at least one template name", nodes.Position{}, nil)
+		}
+
+		if lastErr != nil {
+			if len(names) == 1 {
+				return nil, lastErr
+			}
+			return nil, NewTemplatesNotFound(names, tried, lastErr)
+		}
+
+		return nil, NewError(ErrorTypeTemplate, "no templates found", nodes.Position{}, nil)
 	default:
 		return nil, NewError(ErrorTypeTemplate,
 			fmt.Sprintf("unsupported template target type %T", target),
