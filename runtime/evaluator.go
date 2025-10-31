@@ -654,6 +654,10 @@ func (e *Evaluator) visitImport(node *nodes.Import) interface{} {
 	// Store the namespace in the context
 	e.ctx.Set(node.Target, namespace)
 
+	if e.ctx.InRootScope() {
+		e.ctx.SetExport(node.Target, namespace)
+	}
+
 	return nil
 }
 
@@ -695,6 +699,9 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 			if value, ok := namespace.Resolve(name); ok {
 				e.ctx.Set(name, value)
 				imported[name] = struct{}{}
+				if e.ctx.InRootScope() {
+					e.ctx.SetExport(name, value)
+				}
 			}
 		}
 
@@ -707,6 +714,9 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 			}
 			if macro, err := namespace.GetMacro(name); err == nil {
 				e.ctx.Set(name, macro)
+				if e.ctx.InRootScope() {
+					e.ctx.SetExport(name, macro)
+				}
 			}
 		}
 
@@ -731,6 +741,9 @@ func (e *Evaluator) visitFromImport(node *nodes.FromImport) interface{} {
 	// Store each imported value in the current context
 	for alias, value := range values {
 		e.ctx.Set(alias, value)
+		if e.ctx.InRootScope() {
+			e.ctx.SetExport(alias, value)
+		}
 	}
 
 	return nil

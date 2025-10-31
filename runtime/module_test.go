@@ -66,3 +66,68 @@ Hello {{ name }}!
 		t.Errorf("expected exported names to include 'answer', got %v", exports)
 	}
 }
+
+func TestTemplateModuleExportsImports(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{
+		"helpers.html": `{% macro greet(name) %}Hello {{ name }}!{% endmacro %}`,
+		"main.html": `
+{% import "helpers.html" as helpers %}
+{% from "helpers.html" import greet as salute %}
+{% from "helpers.html" import greet %}
+`,
+	}))
+
+	tmpl, err := env.ParseFile("main.html")
+	if err != nil {
+		t.Fatalf("failed to parse main template: %v", err)
+	}
+
+	module, err := tmpl.MakeModule(nil)
+	if err != nil {
+		t.Fatalf("failed to create module with imports: %v", err)
+	}
+
+	helpersValue, ok := module.Resolve("helpers")
+	if !ok {
+		t.Fatalf("expected namespace 'helpers' to be exported")
+	}
+
+	helpersNS, ok := helpersValue.(*MacroNamespace)
+	if !ok {
+		t.Fatalf("expected 'helpers' export to be a MacroNamespace, got %T", helpersValue)
+	}
+
+	if _, err := helpersNS.GetMacro("greet"); err != nil {
+		t.Fatalf("expected helpers namespace to provide greet macro: %v", err)
+	}
+
+	saluteValue, ok := module.Resolve("salute")
+	if !ok {
+		t.Fatalf("expected imported macro alias 'salute' to be exported")
+	}
+
+	saluteMacro, ok := saluteValue.(*Macro)
+	if !ok {
+		t.Fatalf("expected 'salute' export to be a Macro, got %T", saluteValue)
+	}
+
+	ctx := NewContextWithEnvironment(env, nil)
+	rendered, err := saluteMacro.Call(ctx, "Go")
+	if err != nil {
+		t.Fatalf("failed to execute imported macro: %v", err)
+	}
+
+	if strings.TrimSpace(rendered.(string)) != "Hello Go!" {
+		t.Fatalf("unexpected macro output: %v", rendered)
+	}
+
+	greetValue, ok := module.Resolve("greet")
+	if !ok {
+		t.Fatalf("expected direct import 'greet' to be exported")
+	}
+
+	if _, ok := greetValue.(*Macro); !ok {
+		t.Fatalf("expected 'greet' export to be a Macro, got %T", greetValue)
+	}
+}
