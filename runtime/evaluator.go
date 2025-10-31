@@ -2766,40 +2766,19 @@ func (e *Evaluator) createSlice(start, stop, step interface{}, pos nodes.Positio
 // Arithmetic operations
 
 func (e *Evaluator) add(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			return l + r
-		case int64:
-			return int64(l) + r
-		case float64:
-			return float64(l) + r
+	if leftNum, ok := classifyNumber(left); ok {
+		if rightNum, ok := classifyNumber(right); ok {
+			if leftNum.isFloat() || rightNum.isFloat() {
+				return leftNum.asFloat64() + rightNum.asFloat64()
+			}
+			return leftNum.intValue + rightNum.intValue
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			return l + int64(r)
-		case int64:
-			return l + r
-		case float64:
-			return float64(l) + r
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			return l + float64(r)
-		case int64:
-			return l + float64(r)
-		case float64:
-			return l + r
-		}
-	case string:
-		// String concatenation only works with strings
+	}
+
+	if l, ok := left.(string); ok {
 		if r, ok := right.(string); ok {
 			return l + r
 		}
-		// Return error for string + non-string
 		return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for +: %T and %T", left, right), pos, nil)
 	}
 
@@ -2807,33 +2786,12 @@ func (e *Evaluator) add(left, right interface{}, pos nodes.Position) interface{}
 }
 
 func (e *Evaluator) subtract(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			return l - r
-		case int64:
-			return int64(l) - r
-		case float64:
-			return float64(l) - r
-		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			return l - int64(r)
-		case int64:
-			return l - r
-		case float64:
-			return float64(l) - r
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			return l - float64(r)
-		case int64:
-			return l - float64(r)
-		case float64:
-			return l - r
+	if leftNum, ok := classifyNumber(left); ok {
+		if rightNum, ok := classifyNumber(right); ok {
+			if leftNum.isFloat() || rightNum.isFloat() {
+				return leftNum.asFloat64() - rightNum.asFloat64()
+			}
+			return leftNum.intValue - rightNum.intValue
 		}
 	}
 
@@ -2841,36 +2799,16 @@ func (e *Evaluator) subtract(left, right interface{}, pos nodes.Position) interf
 }
 
 func (e *Evaluator) multiply(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			return l * r
-		case int64:
-			return int64(l) * r
-		case float64:
-			return float64(l) * r
+	if leftNum, ok := classifyNumber(left); ok {
+		if rightNum, ok := classifyNumber(right); ok {
+			if leftNum.isFloat() || rightNum.isFloat() {
+				return leftNum.asFloat64() * rightNum.asFloat64()
+			}
+			return leftNum.intValue * rightNum.intValue
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			return l * int64(r)
-		case int64:
-			return l * r
-		case float64:
-			return float64(l) * r
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			return l * float64(r)
-		case int64:
-			return l * float64(r)
-		case float64:
-			return l * r
-		}
-	case string:
-		// String repetition
+	}
+
+	if l, ok := left.(string); ok {
 		if count, ok := toInt(right); ok && count >= 0 {
 			var result strings.Builder
 			for i := 0; i < count; i++ {
@@ -2878,232 +2816,99 @@ func (e *Evaluator) multiply(left, right interface{}, pos nodes.Position) interf
 			}
 			return result.String()
 		}
+		return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for *: %T and %T", left, right), pos, nil)
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for *: %T and %T", left, right), pos, nil)
 }
 
 func (e *Evaluator) divide(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / float64(r)
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / float64(r)
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / r
+	leftNum, leftOk := classifyNumber(left)
+	rightNum, rightOk := classifyNumber(right)
+	if leftOk && rightOk {
+		if rightNum.asFloat64() == 0 {
+			return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / float64(r)
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / float64(r)
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return float64(l) / r
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return l / float64(r)
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return l / float64(r)
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return l / r
-		}
+		return leftNum.asFloat64() / rightNum.asFloat64()
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for /: %T and %T", left, right), pos, nil)
 }
 
 func (e *Evaluator) floorDivide(left, right interface{}, pos nodes.Position) interface{} {
-	floorDiv := func(l, r int64) int64 {
-		q := l / r
-		rem := l % r
-		if rem != 0 && ((rem > 0 && r < 0) || (rem < 0 && r > 0)) {
-			q--
+	leftNum, leftOk := classifyNumber(left)
+	rightNum, rightOk := classifyNumber(right)
+	if leftOk && rightOk {
+		if rightNum.isZero() {
+			return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
 		}
-		return q
-	}
 
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return int(floorDiv(int64(l), int64(r)))
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return floorDiv(int64(l), r)
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return math.Floor(float64(l) / r)
+		if leftNum.isFloat() || rightNum.isFloat() {
+			return math.Floor(leftNum.asFloat64() / rightNum.asFloat64())
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return floorDiv(l, int64(r))
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return floorDiv(l, r)
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return math.Floor(float64(l) / r)
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return math.Floor(l / float64(r))
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return math.Floor(l / float64(r))
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "division by zero", pos, nil)
-			}
-			return math.Floor(l / r)
-		}
+
+		return floorDivideIntegers(leftNum.intValue, rightNum.intValue)
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for //: %T and %T", left, right), pos, nil)
 }
 
+func floorDivideIntegers(left, right int64) int64 {
+	q := left / right
+	rem := left % right
+	if rem != 0 && ((rem > 0 && right < 0) || (rem < 0 && right > 0)) {
+		q--
+	}
+	return q
+}
+
 func (e *Evaluator) modulo(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return l % r
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return int64(l) % r
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return math.Mod(float64(l), r)
+	leftNum, leftOk := classifyNumber(left)
+	rightNum, rightOk := classifyNumber(right)
+	if leftOk && rightOk {
+		if rightNum.isZero() {
+			return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
+
+		if leftNum.isFloat() || rightNum.isFloat() {
+			l := leftNum.asFloat64()
+			r := rightNum.asFloat64()
+			mod := math.Mod(l, r)
+			if (mod > 0 && r < 0) || (mod < 0 && r > 0) {
+				mod += r
 			}
-			return l % int64(r)
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
+			if mod == 0 {
+				return 0
 			}
-			return l % r
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return math.Mod(float64(l), r)
+			return mod
 		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return math.Mod(l, float64(r))
-		case int64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return math.Mod(l, float64(r))
-		case float64:
-			if r == 0 {
-				return NewError(ErrorTypeTemplate, "modulo by zero", pos, nil)
-			}
-			return math.Mod(l, r)
-		}
+
+		return pythonModuloInt(leftNum.intValue, rightNum.intValue)
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for %%: %T and %T", left, right), pos, nil)
 }
 
+func pythonModuloInt(left, right int64) int64 {
+	rem := left % right
+	if (rem > 0 && right < 0) || (rem < 0 && right > 0) {
+		rem += right
+	}
+	return rem
+}
+
 func (e *Evaluator) power(left, right interface{}, pos nodes.Position) interface{} {
-	switch l := left.(type) {
-	case int:
-		switch r := right.(type) {
-		case int:
-			return int(math.Pow(float64(l), float64(r)))
-		case int64:
-			return int64(math.Pow(float64(l), float64(r)))
-		case float64:
-			return math.Pow(float64(l), r)
+	leftNum, leftOk := classifyNumber(left)
+	rightNum, rightOk := classifyNumber(right)
+	if leftOk && rightOk {
+		base := leftNum.asFloat64()
+		exponent := rightNum.asFloat64()
+
+		if leftNum.isFloat() || rightNum.isFloat() || exponent < 0 {
+			return math.Pow(base, exponent)
 		}
-	case int64:
-		switch r := right.(type) {
-		case int:
-			return int64(math.Pow(float64(l), float64(r)))
-		case int64:
-			return int64(math.Pow(float64(l), float64(r)))
-		case float64:
-			return math.Pow(float64(l), r)
-		}
-	case float64:
-		switch r := right.(type) {
-		case int:
-			return math.Pow(l, float64(r))
-		case int64:
-			return math.Pow(l, float64(r))
-		case float64:
-			return math.Pow(l, r)
-		}
+
+		return int64(math.Pow(base, exponent))
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("unsupported operand types for **: %T and %T", left, right), pos, nil)
@@ -3128,18 +2933,13 @@ func (e *Evaluator) logicalNot(operand interface{}) interface{} {
 }
 
 func (e *Evaluator) negate(operand interface{}, pos nodes.Position) interface{} {
-	switch v := operand.(type) {
-	case int:
-		return -v
-	case int64:
-		return -v
-	case float64:
-		return -v
-	case float32:
-		return -v
-	default:
-		return NewError(ErrorTypeTemplate, fmt.Sprintf("bad operand type for unary -: %T", operand), pos, nil)
+	if num, ok := classifyNumber(operand); ok {
+		if num.isFloat() {
+			return -num.asFloat64()
+		}
+		return -num.intValue
 	}
+	return NewError(ErrorTypeTemplate, fmt.Sprintf("bad operand type for unary -: %T", operand), pos, nil)
 }
 
 func (e *Evaluator) compare(op string, left, right interface{}, pos nodes.Position) interface{} {

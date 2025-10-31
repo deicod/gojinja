@@ -3084,20 +3084,11 @@ func xmlAttrValue(value interface{}) (string, bool) {
 }
 
 func toFloat64(val interface{}) (float64, bool) {
+	if num, ok := classifyNumber(val); ok {
+		return num.asFloat64(), true
+	}
+
 	switch v := val.(type) {
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case bool:
-		if v {
-			return 1, true
-		}
-		return 0, true
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
 	case string:
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f, true
@@ -3111,17 +3102,20 @@ func toFloat64(val interface{}) (float64, bool) {
 }
 
 func toInt(val interface{}) (int, bool) {
+	if num, ok := classifyNumber(val); ok {
+		if num.isFloat() {
+			return int(num.asFloat64()), true
+		}
+		return int(num.intValue), true
+	}
+
 	switch v := val.(type) {
-	case int:
-		return v, true
-	case int64:
-		return int(v), true
-	case float64:
-		return int(v), true
-	case float32:
-		return int(v), true
 	case string:
 		if i, err := strconv.Atoi(v); err == nil {
+			return i, true
+		}
+	case Markup:
+		if i, err := strconv.Atoi(string(v)); err == nil {
 			return i, true
 		}
 	}
