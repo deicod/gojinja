@@ -222,6 +222,8 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitBinExpr(n)
 	case *nodes.UnaryExpr:
 		return e.visitUnaryExpr(n)
+	case *nodes.Await:
+		return e.visitAwait(n)
 	case *nodes.Call:
 		return e.visitCall(n)
 	case *nodes.Getattr:
@@ -1932,6 +1934,93 @@ func (e *Evaluator) visitUnaryExpr(node *nodes.UnaryExpr) interface{} {
 	default:
 		return NewError(ErrorTypeTemplate, fmt.Sprintf("unknown unary operator: %s", node.Operator), node.GetPosition(), node)
 	}
+}
+
+func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
+	value := e.Evaluate(node.Node)
+	if err, ok := value.(error); ok {
+		return err
+	}
+
+	if value == nil {
+		return nil
+	}
+
+	switch awaitable := value.(type) {
+	case Awaitable:
+		result, err := awaitable.Await(e.ctx)
+		if err != nil {
+			return WrapError(err, node.GetPosition(), node)
+		}
+		return result
+	case SimpleAwaitable:
+		result, err := awaitable.Await()
+		if err != nil {
+			return WrapError(err, node.GetPosition(), node)
+		}
+		return result
+	case func(*Context) (interface{}, error):
+		result, err := awaitable(e.ctx)
+		if err != nil {
+			return WrapError(err, node.GetPosition(), node)
+		}
+		return result
+	case func() (interface{}, error):
+		result, err := awaitable()
+		if err != nil {
+			return WrapError(err, node.GetPosition(), node)
+		}
+		return result
+	case func(*Context) interface{}:
+		return awaitable(e.ctx)
+	case func() interface{}:
+		return awaitable()
+	}
+
+	val := reflect.ValueOf(value)
+
+	method := val.MethodByName("Await")
+	if !method.IsValid() && val.CanAddr() {
+		method = val.Addr().MethodByName("Await")
+	}
+
+	if method.IsValid() {
+		methodType := method.Type()
+		numIn := methodType.NumIn()
+		var args []reflect.Value
+
+		switch numIn {
+		case 0:
+			args = nil
+		case 1:
+			if methodType.In(0) != reflect.TypeOf((*Context)(nil)) {
+				return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", node.GetPosition(), node)
+			}
+			args = []reflect.Value{reflect.ValueOf(e.ctx)}
+		default:
+			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", node.GetPosition(), node)
+		}
+
+		results := method.Call(args)
+		switch len(results) {
+		case 0:
+			return nil
+		case 1:
+			return results[0].Interface()
+		case 2:
+			if errVal := results[1].Interface(); errVal != nil {
+				if err, ok := errVal.(error); ok {
+					return WrapError(err, node.GetPosition(), node)
+				}
+				return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), node.GetPosition(), node)
+			}
+			return results[0].Interface()
+		default:
+			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported return signature", node.GetPosition(), node)
+		}
+	}
+
+	return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), node.GetPosition(), node)
 }
 
 func (e *Evaluator) visitCall(node *nodes.Call) interface{} {

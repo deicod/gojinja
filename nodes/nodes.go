@@ -888,6 +888,31 @@ func (u *UnaryExpr) Type() string {
 	return "UnaryExpr"
 }
 
+// Await represents an await expression used in async-enabled templates.
+type Await struct {
+	BaseExpr
+	Node Expr `json:"node"`
+}
+
+func (a *Await) Accept(visitor Visitor) interface{} {
+	return visitor.Visit(a)
+}
+
+func (a *Await) GetChildren() []Node {
+	if a.Node != nil {
+		return []Node{a.Node}
+	}
+	return []Node{}
+}
+
+func (a *Await) String() string {
+	return fmt.Sprintf("Await(node=%v)", a.Node)
+}
+
+func (a *Await) Type() string {
+	return "Await"
+}
+
 // Name represents a name lookup
 type Name struct {
 	BaseExpr

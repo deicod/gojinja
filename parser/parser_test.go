@@ -364,6 +364,41 @@ func TestParser_AsyncStatements(t *testing.T) {
 	}
 }
 
+func TestParser_AwaitExpressions(t *testing.T) {
+	template := `{{ await fetch() }}`
+	if _, err := ParseTemplateWithEnv(&Environment{}, template, "test", "test.html"); err == nil {
+		t.Fatalf("expected error when parsing await expression without enable_async")
+	}
+
+	asyncEnv := &Environment{EnableAsync: true}
+	tmpl, err := ParseTemplateWithEnv(asyncEnv, template, "test", "test.html")
+	if err != nil {
+		t.Fatalf("unexpected error parsing await expression: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single body node, got %d", len(tmpl.Body))
+	}
+
+	output, ok := tmpl.Body[0].(*nodes.Output)
+	if !ok {
+		t.Fatalf("expected Output node, got %T", tmpl.Body[0])
+	}
+
+	if len(output.Nodes) != 1 {
+		t.Fatalf("expected single expression in output, got %d", len(output.Nodes))
+	}
+
+	awaitExpr, ok := output.Nodes[0].(*nodes.Await)
+	if !ok {
+		t.Fatalf("expected Await node, got %T", output.Nodes[0])
+	}
+
+	if _, ok := awaitExpr.Node.(*nodes.Call); !ok {
+		t.Fatalf("expected await to wrap a Call expression, got %T", awaitExpr.Node)
+	}
+}
+
 func TestParser_MacroVarArgs(t *testing.T) {
 	env := &Environment{}
 

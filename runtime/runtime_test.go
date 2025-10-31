@@ -1,11 +1,21 @@
 package runtime
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/deicod/gojinja/parser"
 )
+
+type testAwaitable struct {
+	result interface{}
+	err    error
+}
+
+func (a testAwaitable) Await(ctx *Context) (interface{}, error) {
+	return a.result, a.err
+}
 
 func TestBasicRendering(t *testing.T) {
 	tests := []struct {
@@ -608,6 +618,80 @@ func TestAsyncStatements(t *testing.T) {
 	}
 	if strings.TrimSpace(withResult) != "5" {
 		t.Fatalf("expected output '5', got %q", strings.TrimSpace(withResult))
+	}
+}
+
+func TestAwaitExpressions(t *testing.T) {
+	env := NewEnvironment()
+
+	if _, err := env.ParseString(`{{ await value }}`, "await_disabled"); err == nil {
+		t.Fatalf("expected parse error for await when enable_async is disabled")
+	}
+
+	env.SetEnableAsync(true)
+
+	tmpl, err := env.ParseString(`{{ await value }}`, "await_value")
+	if err != nil {
+		t.Fatalf("failed to parse await template: %v", err)
+	}
+
+	awaited := testAwaitable{result: "done"}
+	output, err := tmpl.ExecuteToString(map[string]interface{}{"value": awaited})
+	if err != nil {
+		t.Fatalf("failed to execute await template: %v", err)
+	}
+	if strings.TrimSpace(output) != "done" {
+		t.Fatalf("expected awaited value 'done', got %q", strings.TrimSpace(output))
+	}
+
+	tmplFunc, err := env.ParseString(`{{ await loader }}`, "await_func")
+	if err != nil {
+		t.Fatalf("failed to parse await function template: %v", err)
+	}
+
+	funcResult, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func() (interface{}, error) {
+		return "loaded", nil
+	}})
+	if err != nil {
+		t.Fatalf("failed to execute await function template: %v", err)
+	}
+	if strings.TrimSpace(funcResult) != "loaded" {
+		t.Fatalf("expected awaited function result 'loaded', got %q", strings.TrimSpace(funcResult))
+	}
+
+	ctxFuncResult, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func(ctx *Context) (interface{}, error) {
+		if ctx == nil {
+			return nil, fmt.Errorf("missing context")
+		}
+		return "ctx", nil
+	}})
+	if err != nil {
+		t.Fatalf("failed to execute await context function template: %v", err)
+	}
+	if strings.TrimSpace(ctxFuncResult) != "ctx" {
+		t.Fatalf("expected awaited context function result 'ctx', got %q", strings.TrimSpace(ctxFuncResult))
+	}
+
+	tmplError, err := env.ParseString(`{{ await value }}`, "await_error")
+	if err != nil {
+		t.Fatalf("failed to parse await error template: %v", err)
+	}
+
+	_, execErr := tmplError.ExecuteToString(map[string]interface{}{"value": testAwaitable{err: fmt.Errorf("boom")}})
+	if execErr == nil {
+		t.Fatalf("expected error when awaitable returns error")
+	}
+	if !strings.Contains(execErr.Error(), "boom") {
+		t.Fatalf("expected error to contain original message, got %v", execErr)
+	}
+
+	tmplInvalid, err := env.ParseString(`{{ await value }}`, "await_invalid")
+	if err != nil {
+		t.Fatalf("failed to parse await invalid template: %v", err)
+	}
+
+	if _, err := tmplInvalid.ExecuteToString(map[string]interface{}{"value": 42}); err == nil {
+		t.Fatalf("expected error when awaiting non-awaitable value")
 	}
 }
 
