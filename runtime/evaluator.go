@@ -13,6 +13,8 @@ import (
 	"github.com/deicod/gojinja/nodes"
 )
 
+var contextType = reflect.TypeOf((*Context)(nil))
+
 type continueSignal struct{}
 type breakSignal struct{}
 
@@ -1979,6 +1981,10 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 
 	val := reflect.ValueOf(value)
 
+	if val.Kind() == reflect.Func {
+		return e.callAwaitFunction(val, node)
+	}
+
 	method := val.MethodByName("Await")
 	if !method.IsValid() && val.CanAddr() {
 		method = val.Addr().MethodByName("Await")
@@ -2021,6 +2027,54 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 	}
 
 	return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), node.GetPosition(), node)
+}
+
+func (e *Evaluator) callAwaitFunction(fn reflect.Value, node *nodes.Await) interface{} {
+	fnType := fn.Type()
+
+	if fnType.IsVariadic() {
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+	}
+
+	var args []reflect.Value
+	switch fnType.NumIn() {
+	case 0:
+		// no arguments
+	case 1:
+		if fnType.In(0) != contextType {
+			return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+		}
+		args = []reflect.Value{reflect.ValueOf(e.ctx)}
+	default:
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+	}
+
+	results := fn.Call(args)
+
+	switch len(results) {
+	case 0:
+		return nil
+	case 1:
+		result := results[0].Interface()
+		if err, ok := result.(error); ok {
+			if err != nil {
+				return WrapError(err, node.GetPosition(), node)
+			}
+			return nil
+		}
+		return result
+	case 2:
+		errVal := results[1].Interface()
+		if errVal != nil {
+			if err, ok := errVal.(error); ok {
+				return WrapError(err, node.GetPosition(), node)
+			}
+			return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), node.GetPosition(), node)
+		}
+		return results[0].Interface()
+	default:
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported return signature", node.GetPosition(), node)
+	}
 }
 
 func (e *Evaluator) visitCall(node *nodes.Call) interface{} {
