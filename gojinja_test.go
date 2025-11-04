@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,67 @@ func TestTemplateChainAndBatchRenderer(t *testing.T) {
 	}
 	if buf.String() != "Bye Go" {
 		t.Fatalf("expected 'Bye Go', got %q", buf.String())
+	}
+}
+
+func TestMakeModuleExports(t *testing.T) {
+	tmpl, err := ParseString(`
+{% macro greet(name) %}
+Hello {{ name }}!
+{% endmacro %}
+{% set answer = 42 %}
+{% export answer %}
+`)
+	if err != nil {
+		t.Fatalf("ParseString error: %v", err)
+	}
+
+	module, err := tmpl.MakeModule(nil)
+	if err != nil {
+		t.Fatalf("MakeModule error: %v", err)
+	}
+
+	macro, err := module.GetMacro("greet")
+	if err != nil {
+		t.Fatalf("expected greet macro to be exported: %v", err)
+	}
+
+	ctx := NewContextWithEnvironment(tmpl.Environment(), nil)
+	value, err := macro.Call(ctx, "Parity")
+	if err != nil {
+		t.Fatalf("macro call failed: %v", err)
+	}
+
+	if result := strings.TrimSpace(value.(string)); result != "Hello Parity!" {
+		t.Fatalf("unexpected macro output: %q", result)
+	}
+
+	exported, ok := module.Resolve("answer")
+	if !ok {
+		t.Fatalf("expected exported value 'answer' to be resolvable")
+	}
+	switch v := exported.(type) {
+	case int:
+		if v != 42 {
+			t.Fatalf("expected exported answer to be 42, got %d", v)
+		}
+	case int64:
+		if v != 42 {
+			t.Fatalf("expected exported answer to be 42, got %d", v)
+		}
+	default:
+		t.Fatalf("expected exported answer to be numeric, got %T", exported)
+	}
+
+	names := module.GetExportNames()
+	found := false
+	for _, name := range names {
+		if name == "answer" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected export names to include 'answer', got %v", names)
 	}
 }

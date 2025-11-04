@@ -36,6 +36,15 @@ type SecurityManager = runtime.SecurityManager
 // SecurityContext manages security during template execution
 type SecurityContext = runtime.SecurityContext
 
+// Macro represents a compiled Jinja2 macro
+type Macro = runtime.Macro
+
+// MacroNamespace represents the exported namespace returned by MakeModule
+type MacroNamespace = runtime.MacroNamespace
+
+// MacroCaller captures the caller state for call blocks
+type MacroCaller = runtime.MacroCaller
+
 // NewEnvironment creates a new Jinja2 environment
 func NewEnvironment() *Environment {
 	return runtime.NewEnvironment()
@@ -64,6 +73,16 @@ func NewDevelopmentEnvironment() *runtime.SandboxEnvironment {
 // NewRestrictedEnvironment creates a new environment with restricted policy
 func NewRestrictedEnvironment() *runtime.SandboxEnvironment {
 	return runtime.NewRestrictedEnvironment()
+}
+
+// NewContext creates a rendering context with the provided variables.
+func NewContext(vars map[string]interface{}) *Context {
+	return runtime.NewContext(vars)
+}
+
+// NewContextWithEnvironment creates a context bound to the provided environment.
+func NewContextWithEnvironment(env *Environment, vars map[string]interface{}) *Context {
+	return runtime.NewContextWithEnvironment(env, vars)
 }
 
 // ParseString parses a template from a string
