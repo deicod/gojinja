@@ -2100,7 +2100,7 @@ func (e *Evaluator) callAwaitFunction(fn reflect.Value, node nodes.Node) interfa
 		result := results[0].Interface()
 		if err, ok := result.(error); ok {
 			if err != nil {
-				return WrapError(err, node.GetPosition(), node)
+				return WrapError(err, pos, node)
 			}
 			return nil
 		}
@@ -2109,7 +2109,7 @@ func (e *Evaluator) callAwaitFunction(fn reflect.Value, node nodes.Node) interfa
 		errVal := results[1].Interface()
 		if errVal != nil {
 			if err, ok := errVal.(error); ok {
-				return WrapError(err, node.GetPosition(), node)
+				return WrapError(err, pos, node)
 			}
 			return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), pos, node)
 		}
