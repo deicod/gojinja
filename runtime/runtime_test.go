@@ -774,6 +774,62 @@ func TestAwaitExpressions(t *testing.T) {
 	}
 }
 
+func TestAsyncFiltersTestsAndGlobals(t *testing.T) {
+	env := NewEnvironment()
+	env.SetEnableAsync(true)
+
+	env.AddFilter("defer", func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+		return testAwaitable{result: fmt.Sprintf("%v!", value)}, nil
+	})
+
+	env.AddTest("async_truthy", func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+		return testAwaitable{result: value == "go"}, nil
+	})
+
+	env.AddGlobal("async_value", func(ctx *Context, args ...interface{}) (interface{}, error) {
+		return testAwaitable{result: "global"}, nil
+	})
+
+	tmplFilter, err := env.ParseString("{{ 'hello'|defer }}", "async_filter")
+	if err != nil {
+		t.Fatalf("failed to parse async filter template: %v", err)
+	}
+
+	filterOutput, err := tmplFilter.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("failed to execute async filter template: %v", err)
+	}
+	if strings.TrimSpace(filterOutput) != "hello!" {
+		t.Fatalf("expected awaited filter result 'hello!', got %q", strings.TrimSpace(filterOutput))
+	}
+
+	tmplTest, err := env.ParseString("{% if subject is async_truthy %}yes{% else %}no{% endif %}", "async_test")
+	if err != nil {
+		t.Fatalf("failed to parse async test template: %v", err)
+	}
+
+	testOutput, err := tmplTest.ExecuteToString(map[string]interface{}{"subject": "go"})
+	if err != nil {
+		t.Fatalf("failed to execute async test template: %v", err)
+	}
+	if strings.TrimSpace(testOutput) != "yes" {
+		t.Fatalf("expected awaited test result 'yes', got %q", strings.TrimSpace(testOutput))
+	}
+
+	tmplGlobal, err := env.ParseString("{{ async_value() }}", "async_global")
+	if err != nil {
+		t.Fatalf("failed to parse async global template: %v", err)
+	}
+
+	globalOutput, err := tmplGlobal.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("failed to execute async global template: %v", err)
+	}
+	if strings.TrimSpace(globalOutput) != "global" {
+		t.Fatalf("expected awaited global result 'global', got %q", strings.TrimSpace(globalOutput))
+	}
+}
+
 func TestContextScoping(t *testing.T) {
 	t.Run("variable shadowing", func(t *testing.T) {
 		template := "{% set x = 'outer' %}{{ x }}{% set x = 'inner' %}{{ x }}"

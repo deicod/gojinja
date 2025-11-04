@@ -265,7 +265,7 @@ func (sew *SecureEnvironmentWrapper) GetTest(name string) (TestFunc, bool) {
 	test, ok := sew.baseEnvironment.GetTest(name)
 	if ok {
 		// Wrap test with security checks
-		secureTest := func(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+		secureTest := func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 			// Validate arguments
 			for i, arg := range args {
 				argStr := fmt.Sprintf("%v", arg)
@@ -420,7 +420,7 @@ func (se *SandboxedEvaluator) visitCall(node *nodes.Call) interface{} {
 	}
 
 	// Call the function using the parent implementation
-	return se.Evaluator.callFunction(callable, args, kwargs, node.GetPosition())
+	return se.Evaluator.callFunction(callable, args, kwargs, node)
 }
 
 // Helper methods
@@ -465,11 +465,11 @@ func (se *SandboxedEvaluator) extractMethodName(callable interface{}, node *node
 type ExecutionOption func(*executionConfig)
 
 type executionConfig struct {
-	timeout       time.Duration
-	memoryLimit   int64
-	outputLimit   int64
-	enableAudit   bool
-	policyName    string
+	timeout     time.Duration
+	memoryLimit int64
+	outputLimit int64
+	enableAudit bool
+	policyName  string
 }
 
 // WithTimeout sets the execution timeout
