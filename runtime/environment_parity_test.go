@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -200,4 +201,64 @@ func TestEnvironmentJoinPath(t *testing.T) {
 	if joined != "/absolute/path.html" {
 		t.Fatalf("unexpected absolute join result: %q", joined)
 	}
+}
+
+func TestEnvironmentJoinPathDelegatesToLoader(t *testing.T) {
+	env := NewEnvironment()
+	loader := &trackingJoinLoader{}
+	env.SetLoader(loader)
+
+	joined, err := env.JoinPath("component.html", "layouts/base.html")
+	if err != nil {
+		t.Fatalf("join_path delegation error: %v", err)
+	}
+	if joined != "loader:layouts/base.html:component.html" {
+		t.Fatalf("expected loader join result, got %q", joined)
+	}
+	if loader.calls != 1 {
+		t.Fatalf("expected loader JoinPath to be invoked once, got %d", loader.calls)
+	}
+
+	empty := ""
+	loader.nextReturn = &empty
+	joined, err = env.JoinPath("component.html", "layouts/base.html")
+	if err != nil {
+		t.Fatalf("join_path fallback error: %v", err)
+	}
+	if joined != "layouts/component.html" {
+		t.Fatalf("expected fallback join result, got %q", joined)
+	}
+	if loader.calls != 2 {
+		t.Fatalf("expected loader JoinPath to be invoked twice, got %d", loader.calls)
+	}
+
+	loader.nextErr = errors.New("boom")
+	if _, err := env.JoinPath("component.html", "layouts/base.html"); err == nil {
+		t.Fatalf("expected loader join error to propagate")
+	}
+}
+
+type trackingJoinLoader struct {
+	nextReturn *string
+	nextErr    error
+	calls      int
+}
+
+func (l *trackingJoinLoader) Load(name string) (string, error) {
+	return "", os.ErrNotExist
+}
+
+func (l *trackingJoinLoader) JoinPath(template, parent string) (string, error) {
+	l.calls++
+	if l.nextErr != nil {
+		err := l.nextErr
+		l.nextErr = nil
+		return "", err
+	}
+	if l.nextReturn != nil {
+		res := *l.nextReturn
+		l.nextReturn = nil
+		return res, nil
+	}
+	return "loader:" + parent + ":" + template, nil
 }

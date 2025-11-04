@@ -37,6 +37,14 @@ type Loader interface {
 	Load(name string) (string, error)
 }
 
+// joinPathLoader is implemented by loaders that provide custom join semantics
+// for resolving relative template names. This mirrors Jinja2's optional
+// 'join_path' hook that allows loaders to influence how parent/child template
+// names are combined.
+type joinPathLoader interface {
+	JoinPath(template, parent string) (string, error)
+}
+
 // FileSystemLoader loads templates from the file system
 type FileSystemLoader struct {
 	basePaths []string
@@ -86,6 +94,14 @@ func (l *FileSystemLoader) Load(name string) (string, error) {
 	}
 
 	return "", NewTemplateNotFound(name, tried, os.ErrNotExist)
+}
+
+// JoinPath joins a child template with its parent using POSIX-style path
+// semantics. This allows environments to defer join behaviour to the loader
+// when resolving inheritance/include statements, matching Jinja2's
+// FileSystemLoader implementation.
+func (l *FileSystemLoader) JoinPath(template, parent string) (string, error) {
+	return joinPathDefault(template, parent)
 }
 
 // TemplateModTime returns the modification time for the requested template.
@@ -190,6 +206,12 @@ func (l *MapLoader) Load(name string) (string, error) {
 		return "", NewTemplateNotFound(name, []string{name}, nil)
 	}
 	return template, nil
+}
+
+// JoinPath mirrors the default environment join behaviour for in-memory map
+// loaders so relative template resolution behaves consistently with Jinja2.
+func (l *MapLoader) JoinPath(template, parent string) (string, error) {
+	return joinPathDefault(template, parent)
 }
 
 // TemplateModTime returns a stable modification marker for map-backed templates.
@@ -1338,9 +1360,35 @@ func (env *Environment) FromString(source string) (*Template, error) {
 	return env.ParseString(source, "from_string")
 }
 
-// JoinPath combines a template path with its parent template path, matching
-// Jinja2's relative import and extends resolution rules.
+// JoinPath combines a template path with its parent template path. If the
+// active loader provides custom join semantics they are used, mirroring
+// Jinja2's 'join_path' hook, otherwise the runtime falls back to the default
+// relative resolution logic.
 func (env *Environment) JoinPath(template, parent string) (string, error) {
+	if template == "" {
+		return "", NewError(ErrorTypeTemplate, "template name cannot be empty", nodes.Position{}, nil)
+	}
+
+	env.mu.RLock()
+	loader := env.loader
+	env.mu.RUnlock()
+
+	if loader != nil {
+		if joiner, ok := loader.(joinPathLoader); ok {
+			joined, err := joiner.JoinPath(template, parent)
+			if err != nil {
+				return "", err
+			}
+			if joined != "" {
+				return joined, nil
+			}
+		}
+	}
+
+	return joinPathDefault(template, parent)
+}
+
+func joinPathDefault(template, parent string) (string, error) {
 	if template == "" {
 		return "", NewError(ErrorTypeTemplate, "template name cannot be empty", nodes.Position{}, nil)
 	}
