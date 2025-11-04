@@ -265,6 +265,92 @@ func (t *Template) MakeModule(vars map[string]interface{}) (*MacroNamespace, err
 	return t.makeModuleFromContext(ctx)
 }
 
+// MakeModuleWithContext executes the template using the provided context and returns
+// a namespace with exported members. The supplied context is temporarily reused
+// during module execution so macros can share state with other renders while the
+// original context state is restored afterwards.
+func (t *Template) MakeModuleWithContext(ctx *Context, vars map[string]interface{}) (*MacroNamespace, error) {
+	if ctx == nil {
+		return nil, NewError(ErrorTypeTemplate, "context cannot be nil", nodes.Position{}, nil)
+	}
+
+	if t.environment != nil && ctx.environment != nil && ctx.environment != t.environment {
+		return nil, NewError(ErrorTypeTemplate, "context belongs to a different environment", nodes.Position{}, nil)
+	}
+
+	originalEnv := ctx.environment
+	if originalEnv == nil && t.environment != nil {
+		ctx.environment = t.environment
+	}
+	defer func() {
+		ctx.environment = originalEnv
+	}()
+
+	ctx.mu.RLock()
+	root := ctx.rootScope()
+	originalExports := make(map[string]interface{}, len(root.exports))
+	for name, value := range root.exports {
+		originalExports[name] = value
+	}
+	originalRootVars := make(map[string]interface{}, len(root.vars))
+	for name, value := range root.vars {
+		originalRootVars[name] = value
+	}
+	ctx.mu.RUnlock()
+	defer func() {
+		ctx.mu.Lock()
+		root := ctx.rootScope()
+		root.exports = make(map[string]interface{}, len(originalExports))
+		for name, value := range originalExports {
+			root.exports[name] = value
+		}
+		root.vars = make(map[string]interface{}, len(originalRootVars))
+		for name, value := range originalRootVars {
+			root.vars[name] = value
+		}
+		ctx.mu.Unlock()
+	}()
+
+	ctx.mu.Lock()
+	originalErrors := append([]error(nil), ctx.errors...)
+	ctx.mu.Unlock()
+	defer func() {
+		ctx.mu.Lock()
+		ctx.errors = originalErrors
+		ctx.mu.Unlock()
+	}()
+
+	originalImportManager := ctx.GetImportManager()
+	if originalImportManager == nil && t.environment != nil {
+		ctx.SetImportManager(NewImportManager(t.environment))
+	}
+	defer ctx.SetImportManager(originalImportManager)
+
+	if len(vars) > 0 {
+		ctx.mu.Lock()
+		root := ctx.rootScope()
+		for name, value := range vars {
+			root.vars[name] = value
+		}
+		ctx.mu.Unlock()
+	}
+
+	oldWriter := ctx.writer
+	var buf strings.Builder
+	ctx.writer = &buf
+	defer func() { ctx.writer = oldWriter }()
+
+	oldCurrent := ctx.current
+	ctx.current = t
+	defer func() { ctx.current = oldCurrent }()
+
+	oldAutoescape := ctx.autoescape
+	ctx.autoescape = t.autoescape
+	defer func() { ctx.autoescape = oldAutoescape }()
+
+	return t.makeModuleFromContext(ctx)
+}
+
 // Name returns the template name
 func (t *Template) Name() string {
 	return t.name

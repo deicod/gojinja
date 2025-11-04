@@ -131,3 +131,68 @@ func TestTemplateModuleExportsImports(t *testing.T) {
 		t.Fatalf("expected 'greet' export to be a Macro, got %T", greetValue)
 	}
 }
+
+func TestTemplateMakeModuleWithContext(t *testing.T) {
+	env := NewEnvironment()
+	tmpl, err := env.NewTemplate(`
+{% set combined = prefix ~ ' ' ~ suffix %}
+{% export combined %}
+`)
+	if err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+
+	ctx := NewContextWithEnvironment(env, map[string]interface{}{"prefix": "Ms."})
+
+	module, err := tmpl.MakeModuleWithContext(ctx, map[string]interface{}{
+		"prefix": "Dr.",
+		"suffix": "Ada",
+	})
+	if err != nil {
+		t.Fatalf("failed to create module with shared context: %v", err)
+	}
+
+	exported, ok := module.Resolve("combined")
+	if !ok {
+		t.Fatalf("expected exported value 'combined' to be present")
+	}
+	if value, ok := exported.(string); !ok || value != "Dr. Ada" {
+		t.Fatalf("expected exported combined greeting to equal 'Dr. Ada', got %v", exported)
+	}
+
+	prefix, ok := ctx.Get("prefix")
+	if !ok {
+		t.Fatalf("expected original context prefix to remain defined")
+	}
+	if prefix.(string) != "Ms." {
+		t.Fatalf("expected original context prefix to remain 'Ms.', got %v", prefix)
+	}
+
+	if _, ok := ctx.Get("combined"); ok {
+		t.Fatalf("expected internal root variables to be restored after module execution")
+	}
+
+	if _, ok := ctx.Get("suffix"); ok {
+		t.Fatalf("expected temporary variables to be removed from the shared context")
+	}
+
+	if exports := ctx.Exports(); len(exports) != 0 {
+		t.Fatalf("expected original context exports to remain untouched, got %v", exports)
+	}
+}
+
+func TestTemplateMakeModuleWithContextEnvironmentMismatch(t *testing.T) {
+	env := NewEnvironment()
+	otherEnv := NewEnvironment()
+
+	tmpl, err := env.NewTemplate(`{% set value = 1 %}{% export value %}`)
+	if err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+
+	ctx := NewContextWithEnvironment(otherEnv, nil)
+
+	if _, err := tmpl.MakeModuleWithContext(ctx, nil); err == nil {
+		t.Fatalf("expected error when using context from different environment")
+	}
+}

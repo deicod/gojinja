@@ -33,12 +33,7 @@
 
 ## Macros, Imports, and Namespaces
 
-- Macro declarations, caller blocks, imports (`import`/`from`), and namespace tracking are covered via the macro registry and import runtime (`parser/statements.go`, `runtime/macro.go`, `runtime/import.go`).
-- `with context` / `without context` toggles and `call` blocks propagate scope data appropriately (`runtime/evaluator.go`).
-- Variadic argument collectors (`*args`) and keyword dictionaries (`**kwargs`) bind with the same semantics as Jinja macros, including duplicate argument detection (`parser/statements.go`, `runtime/macro.go`).
-- Keyword-only parameters (including bare `*` markers after positional arguments) now parse correctly and receive late-bound defaults during invocation (`parser/statements.go`, `runtime/macro.go`).
-
-**Remaining gaps**: template module exports remain TODOs.
+- Template module exports, including explicit `{% export %}` statements and module creation that shares existing contexts, mirror Jinja's module API (`runtime/evaluator.go`, `runtime/template.go`).
 
 ## Whitespace & Data Control
 

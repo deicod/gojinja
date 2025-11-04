@@ -249,7 +249,7 @@ go test ./runtime/... -v
 
 1. **Dynamic Extends**: Template names in extends must be compile-time constants
 2. **Include Support**: Template include functionality not yet implemented
-3. **Macro Import**: Macro import/export functionality not yet implemented
+3. **Macro Import**: Macro import/export functionality implemented via the import manager and module exports
 
 ## Future Enhancements
 
