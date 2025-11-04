@@ -1061,7 +1061,7 @@ func (e *Evaluator) visitCallBlock(node *nodes.CallBlock) interface{} {
 		}()
 	}
 
-	result := e.callFunction(callable, args, kwargs, node.GetPosition())
+	result := e.callFunction(callable, args, kwargs, node)
 	if err, ok := result.(error); ok {
 		return err
 	}
@@ -1585,7 +1585,7 @@ func (e *Evaluator) invokeGettext(node *nodes.Trans, message string, mapping map
 		args = append(args, mapping)
 	}
 
-	result := e.callFunction(callable, args, nil, node.GetPosition())
+	result := e.callFunction(callable, args, nil, node)
 	if err, ok := result.(error); ok {
 		return nil, err
 	}
@@ -1619,7 +1619,7 @@ func (e *Evaluator) invokeNGettext(node *nodes.Trans, singular, plural string, c
 		if len(mapping) > 0 {
 			args = append(args, mapping)
 		}
-		result := e.callFunction(callable, args, nil, node.GetPosition())
+		result := e.callFunction(callable, args, nil, node)
 		if err, ok := result.(error); ok {
 			return nil, err
 		}
@@ -1671,7 +1671,7 @@ func (e *Evaluator) callTransFunction(node *nodes.Trans, name string, args []int
 		callArgs = append(callArgs, mapping)
 	}
 
-	result := e.callFunction(callable, callArgs, nil, node.GetPosition())
+	result := e.callFunction(callable, callArgs, nil, node)
 	if err, ok := result.(error); ok {
 		return nil, true, err
 	}
@@ -1944,33 +1944,62 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 		return err
 	}
 
+	return e.resolveAwaitable(value, node, true)
+}
+
+func (e *Evaluator) shouldAutoAwait() bool {
+	if e.ctx == nil || e.ctx.environment == nil {
+		return false
+	}
+	return e.ctx.environment.IsAsyncEnabled()
+}
+
+func (e *Evaluator) autoAwaitValue(value interface{}, node nodes.Node) interface{} {
 	if value == nil {
 		return nil
+	}
+	if err, ok := value.(error); ok {
+		return err
+	}
+	if !e.shouldAutoAwait() {
+		return value
+	}
+	return e.resolveAwaitable(value, node, false)
+}
+
+func (e *Evaluator) resolveAwaitable(value interface{}, node nodes.Node, require bool) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	pos := nodes.Position{}
+	if node != nil {
+		pos = node.GetPosition()
 	}
 
 	switch awaitable := value.(type) {
 	case Awaitable:
 		result, err := awaitable.Await(e.ctx)
 		if err != nil {
-			return WrapError(err, node.GetPosition(), node)
+			return WrapError(err, pos, node)
 		}
 		return result
 	case SimpleAwaitable:
 		result, err := awaitable.Await()
 		if err != nil {
-			return WrapError(err, node.GetPosition(), node)
+			return WrapError(err, pos, node)
 		}
 		return result
 	case func(*Context) (interface{}, error):
 		result, err := awaitable(e.ctx)
 		if err != nil {
-			return WrapError(err, node.GetPosition(), node)
+			return WrapError(err, pos, node)
 		}
 		return result
 	case func() (interface{}, error):
 		result, err := awaitable()
 		if err != nil {
-			return WrapError(err, node.GetPosition(), node)
+			return WrapError(err, pos, node)
 		}
 		return result
 	case func(*Context) interface{}:
@@ -1980,6 +2009,12 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 	}
 
 	val := reflect.ValueOf(value)
+	if !val.IsValid() {
+		if require {
+			return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), pos, node)
+		}
+		return value
+	}
 
 	if val.Kind() == reflect.Func {
 		return e.callAwaitFunction(val, node)
@@ -2000,11 +2035,11 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 			args = nil
 		case 1:
 			if methodType.In(0) != reflect.TypeOf((*Context)(nil)) {
-				return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", node.GetPosition(), node)
+				return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", pos, node)
 			}
 			args = []reflect.Value{reflect.ValueOf(e.ctx)}
 		default:
-			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", node.GetPosition(), node)
+			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported argument signature", pos, node)
 		}
 
 		results := method.Call(args)
@@ -2016,24 +2051,31 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 		case 2:
 			if errVal := results[1].Interface(); errVal != nil {
 				if err, ok := errVal.(error); ok {
-					return WrapError(err, node.GetPosition(), node)
+					return WrapError(err, pos, node)
 				}
-				return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), node.GetPosition(), node)
+				return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), pos, node)
 			}
 			return results[0].Interface()
 		default:
-			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported return signature", node.GetPosition(), node)
+			return NewError(ErrorTypeTemplate, "awaitable Await method has unsupported return signature", pos, node)
 		}
 	}
 
-	return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), node.GetPosition(), node)
+	if require {
+		return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), pos, node)
+	}
+	return value
 }
 
-func (e *Evaluator) callAwaitFunction(fn reflect.Value, node *nodes.Await) interface{} {
+func (e *Evaluator) callAwaitFunction(fn reflect.Value, node nodes.Node) interface{} {
 	fnType := fn.Type()
+	pos := nodes.Position{}
+	if node != nil {
+		pos = node.GetPosition()
+	}
 
 	if fnType.IsVariadic() {
-		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", pos, node)
 	}
 
 	var args []reflect.Value
@@ -2042,11 +2084,11 @@ func (e *Evaluator) callAwaitFunction(fn reflect.Value, node *nodes.Await) inter
 		// no arguments
 	case 1:
 		if fnType.In(0) != contextType {
-			return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+			return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", pos, node)
 		}
 		args = []reflect.Value{reflect.ValueOf(e.ctx)}
 	default:
-		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", node.GetPosition(), node)
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported argument signature", pos, node)
 	}
 
 	results := fn.Call(args)
@@ -2069,11 +2111,11 @@ func (e *Evaluator) callAwaitFunction(fn reflect.Value, node *nodes.Await) inter
 			if err, ok := errVal.(error); ok {
 				return WrapError(err, node.GetPosition(), node)
 			}
-			return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), node.GetPosition(), node)
+			return NewError(ErrorTypeTemplate, fmt.Sprintf("awaitable returned non-error type %T", errVal), pos, node)
 		}
 		return results[0].Interface()
 	default:
-		return NewError(ErrorTypeTemplate, "awaitable function has unsupported return signature", node.GetPosition(), node)
+		return NewError(ErrorTypeTemplate, "awaitable function has unsupported return signature", pos, node)
 	}
 }
 
@@ -2129,7 +2171,7 @@ func (e *Evaluator) visitCall(node *nodes.Call) interface{} {
 		}
 	}
 
-	return e.callFunction(callable, args, kwargs, node.GetPosition())
+	return e.callFunction(callable, args, kwargs, node)
 }
 
 func (e *Evaluator) visitGetattr(node *nodes.Getattr) interface{} {
@@ -2255,7 +2297,12 @@ func (e *Evaluator) visitFilter(node *nodes.Filter) interface{} {
 		return NewFilterError(node.Name, err.Error(), node.GetPosition(), node, err)
 	}
 
-	return result
+	awaited := e.autoAwaitValue(result, node)
+	if err, ok := awaited.(error); ok {
+		return err
+	}
+
+	return awaited
 }
 
 func (e *Evaluator) visitTest(node *nodes.Test) interface{} {
@@ -2297,7 +2344,12 @@ func (e *Evaluator) visitTest(node *nodes.Test) interface{} {
 		return NewTestError(node.Name, err.Error(), node.GetPosition(), node, err)
 	}
 
-	return result
+	awaited := e.autoAwaitValue(result, node)
+	if err, ok := awaited.(error); ok {
+		return err
+	}
+
+	return awaited
 }
 
 func (e *Evaluator) visitCompare(node *nodes.Compare) interface{} {
@@ -2634,7 +2686,16 @@ func (e *Evaluator) assignTarget(target nodes.Expr, value interface{}, pos nodes
 	}
 }
 
-func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwargs map[string]interface{}, pos nodes.Position) interface{} {
+func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwargs map[string]interface{}, node nodes.Node) interface{} {
+	pos := nodes.Position{}
+	if node != nil {
+		pos = node.GetPosition()
+	}
+
+	autoResult := func(res interface{}) interface{} {
+		return e.autoAwaitValue(res, node)
+	}
+
 	switch fn := callable.(type) {
 	case *Macro:
 		callerValue, hasCaller := kwargs["__caller"]
@@ -2649,37 +2710,37 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 		if err != nil {
 			return NewMacroError(fn.Name, err.Error(), pos, fn)
 		}
-		return result
+		return autoResult(result)
 	case *MacroNamespace:
 		// This shouldn't happen directly, but handle gracefully
-		return NewError(ErrorTypeTemplate, "macro namespace is not callable", pos, nil)
+		return NewError(ErrorTypeTemplate, "macro namespace is not callable", pos, node)
 	case GlobalFunc:
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(e.ctx, callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, nil)
+			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
 		}
-		return result
+		return autoResult(result)
 	case func(*Context, ...interface{}) (interface{}, error):
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(e.ctx, callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, nil)
+			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
 		}
-		return result
+		return autoResult(result)
 	case func(*Context, ...interface{}) interface{}:
 		callArgs := appendCallArgs(args, kwargs)
-		return fn(e.ctx, callArgs...)
+		return autoResult(fn(e.ctx, callArgs...))
 	case func(...interface{}) (interface{}, error):
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, nil)
+			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
 		}
-		return result
+		return autoResult(result)
 	case func(...interface{}) interface{}:
 		callArgs := appendCallArgs(args, kwargs)
-		return fn(callArgs...)
+		return autoResult(fn(callArgs...))
 	default:
 		// Try using reflection for method calls
 		argsWithKw := appendCallArgs(args, kwargs)
@@ -2741,31 +2802,31 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 			if len(results) == 0 {
 				return nil
 			} else if len(results) == 1 {
-				return results[0].Interface()
+				return autoResult(results[0].Interface())
 			} else if len(results) == 2 {
 				// Assume (result, error) pattern
 				if !results[1].IsNil() {
 					err, ok := results[1].Interface().(error)
 					if ok {
-						return NewError(ErrorTypeTemplate, err.Error(), pos, nil)
+						return NewError(ErrorTypeTemplate, err.Error(), pos, node)
 					}
 				}
-				return results[0].Interface()
+				return autoResult(results[0].Interface())
 			}
 
 			// Return first result if multiple
-			return results[0].Interface()
+			return autoResult(results[0].Interface())
 		}
 
 		// Check if it's a macro-like callable
 		if isMacroCallable(callable) {
 			result, err := callMacroCallable(e.ctx, callable, args, kwargs)
 			if err != nil {
-				return NewError(ErrorTypeTemplate, err.Error(), pos, nil)
+				return NewError(ErrorTypeTemplate, err.Error(), pos, node)
 			}
-			return result
+			return autoResult(result)
 		}
-		return NewError(ErrorTypeTemplate, fmt.Sprintf("'%T' object is not callable", callable), pos, nil)
+		return NewError(ErrorTypeTemplate, fmt.Sprintf("'%T' object is not callable", callable), pos, node)
 	}
 }
 
@@ -3327,11 +3388,17 @@ func (e *Evaluator) evaluateTestOperator(op *nodes.Operand, value interface{}) i
 		args = append(args, kwargs)
 	}
 
-	passed, err := testFunc(e.ctx, value, args...)
+	result, err := testFunc(e.ctx, value, args...)
 	if err != nil {
 		return NewTestError(testName, err.Error(), op.GetPosition(), op.Expr, err)
 	}
 
+	awaited := e.autoAwaitValue(result, op.Expr)
+	if awaitedErr, ok := awaited.(error); ok {
+		return awaitedErr
+	}
+
+	passed := e.isTruthy(awaited)
 	if op.Op == "isnot" {
 		passed = !passed
 	}

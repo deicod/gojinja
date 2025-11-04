@@ -21,21 +21,15 @@
 ## Built-in Filters
 
 - String, list, numeric, and utility filters now cover the standard library, including `abs`, `attr`, `batch`, `capitalize`, `center`, `default`, `dictsort`, `dictsortcasesensitive`, `dictsortreversed`, `escape`/`e`, `escapejs`, `filesizeformat`, `filter`, `first`, `float`, `floatformat`, `forceescape`, `format`, `fromjson`, `groupby`, `indent`, `int`, `join`, `last`, `length`, `list`, `lower`, `ltrim`, `map`, `max`, `min`, `pprint`, `random`, `reject`, `rejectattr`, `replace`, `reverse`, `round`, `safe`, `select`, `selectattr`, `slice`, `sort`, `striptags`, `sum` (with `attribute` and `start` support), `title`, `trim`, `truncate`, `unique`, `upper`, `urlencode`, `urlize`, `wordcount`, `wordwrap`, `xmlattr`, `tojson`, and `do` (`runtime/filters.go`).
-- Keyword argument handling matches Jinja for filters such as `wordwrap`, `filesizeformat`, `urlize`, the `dictsort` family, and the `sum` filter's `attribute`/`start` options, and the environment newline settings flow into wrapping behaviour (`runtime/filters.go`).
-
-**Remaining gaps**: richer type coercions for some filters and async-aware filters remain unimplemented.
+- Keyword argument handling matches Jinja for filters such as `wordwrap`, `filesizeformat`, `urlize`, the `dictsort` family, and the `sum` filter's `attribute`/`start` options, and the environment newline settings flow into wrapping behaviour (`runtime/filters.go`). When `enable_async` is active, filter results implementing awaitable semantics are resolved automatically, mirroring Python Jinja's async behaviour (`runtime/evaluator.go`).
 
 ## Built-in Tests
 
-- The environment registers numeric, sequence, mapping, callability, truthiness, string case, containment, regex, NaN/Inf, undefined, module, and rich comparison aliases (including the symbolic operators) (`runtime/filters.go`).
-
-**Remaining gaps**: async predicates are not yet available.
+- The environment registers numeric, sequence, mapping, callability, truthiness, string case, containment, regex, NaN/Inf, undefined, module, and rich comparison aliases (including the symbolic operators). Async-enabled templates transparently await predicate results before truthiness checks (`runtime/filters.go`, `runtime/evaluator.go`).
 
 ## Global Functions
 
-- Built-in globals include `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `class`, `_`/`gettext`/`ngettext`, `debug`, `self`, `context`, `environment`, and the configurable `url_for` hook (`runtime/environment.go`, `runtime/context.go`).
-
-**Remaining gaps**: async-aware variants of these helpers remain TODO for full parity with `enable_async` templates.
+- Built-in globals include `range`, `lipsum`, `dict`, `cycler`, `joiner`, `namespace`, `class`, `_`/`gettext`/`ngettext`, `debug`, `self`, `context`, `environment`, and the configurable `url_for` hook, with async-aware results automatically awaited when `enable_async` is set (`runtime/environment.go`, `runtime/context.go`, `runtime/evaluator.go`).
 
 ## Macros, Imports, and Namespaces
 

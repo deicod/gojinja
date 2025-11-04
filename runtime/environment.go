@@ -20,8 +20,8 @@ import (
 // FilterFunc represents a filter function
 type FilterFunc func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error)
 
-// TestFunc represents a test function
-type TestFunc func(ctx *Context, value interface{}, args ...interface{}) (bool, error)
+// TestFunc represents a test function. The return value will be treated using Jinja's truthiness rules.
+type TestFunc func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error)
 
 // GlobalFunc represents a global function
 type GlobalFunc func(ctx *Context, args ...interface{}) (interface{}, error)

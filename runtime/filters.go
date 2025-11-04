@@ -1693,8 +1693,17 @@ func filterSelect(ctx *Context, value interface{}, args ...interface{}) (interfa
 	}
 	result := make([]interface{}, 0, len(items))
 	testArgs := args[1:]
+	evaluator := NewEvaluator(ctx)
 	for _, item := range items {
-		if passed, err := testFunc(ctx, item, testArgs...); err == nil && passed {
+		tested, err := testFunc(ctx, item, testArgs...)
+		if err != nil {
+			continue
+		}
+		awaited := evaluator.autoAwaitValue(tested, nil)
+		if _, ok := awaited.(error); ok {
+			continue
+		}
+		if isTruthyValue(awaited) {
 			result = append(result, item)
 		}
 	}
@@ -1718,8 +1727,19 @@ func filterReject(ctx *Context, value interface{}, args ...interface{}) (interfa
 	}
 	result := make([]interface{}, 0, len(items))
 	testArgs := args[1:]
+	evaluator := NewEvaluator(ctx)
 	for _, item := range items {
-		if passed, err := testFunc(ctx, item, testArgs...); err != nil || !passed {
+		tested, err := testFunc(ctx, item, testArgs...)
+		if err != nil {
+			result = append(result, item)
+			continue
+		}
+		awaited := evaluator.autoAwaitValue(tested, nil)
+		if _, ok := awaited.(error); ok {
+			result = append(result, item)
+			continue
+		}
+		if !isTruthyValue(awaited) {
 			result = append(result, item)
 		}
 	}
@@ -1762,11 +1782,12 @@ func filterSelectattr(ctx *Context, value interface{}, args ...interface{}) (int
 	}
 
 	result := make([]interface{}, 0, len(items))
+	evaluator := NewEvaluator(ctx)
 	for _, item := range items {
 		attr, _ := getAttribute(item, attrName)
 
 		if testName == "" {
-			if attr != nil && attr != false && attr != 0 && attr != "" {
+			if isTruthyValue(attr) {
 				result = append(result, item)
 			}
 		} else {
@@ -1774,7 +1795,15 @@ func filterSelectattr(ctx *Context, value interface{}, args ...interface{}) (int
 			if !ok {
 				continue
 			}
-			if passed, err := testFunc(ctx, attr, testArgs...); err == nil && passed {
+			tested, err := testFunc(ctx, attr, testArgs...)
+			if err != nil {
+				continue
+			}
+			awaited := evaluator.autoAwaitValue(tested, nil)
+			if _, ok := awaited.(error); ok {
+				continue
+			}
+			if isTruthyValue(awaited) {
 				result = append(result, item)
 			}
 		}
@@ -1817,11 +1846,12 @@ func filterRejectattr(ctx *Context, value interface{}, args ...interface{}) (int
 	}
 
 	result := make([]interface{}, 0, len(items))
+	evaluator := NewEvaluator(ctx)
 	for _, item := range items {
 		attr, _ := getAttribute(item, attrName)
 
 		if testName == "" {
-			if attr == nil || attr == false || attr == 0 || attr == "" {
+			if !isTruthyValue(attr) {
 				result = append(result, item)
 			}
 		} else {
@@ -1830,7 +1860,17 @@ func filterRejectattr(ctx *Context, value interface{}, args ...interface{}) (int
 				result = append(result, item)
 				continue
 			}
-			if passed, err := testFunc(ctx, attr, testArgs...); err != nil || !passed {
+			tested, err := testFunc(ctx, attr, testArgs...)
+			if err != nil {
+				result = append(result, item)
+				continue
+			}
+			awaited := evaluator.autoAwaitValue(tested, nil)
+			if _, ok := awaited.(error); ok {
+				result = append(result, item)
+				continue
+			}
+			if !isTruthyValue(awaited) {
 				result = append(result, item)
 			}
 		}
@@ -1840,7 +1880,7 @@ func filterRejectattr(ctx *Context, value interface{}, args ...interface{}) (int
 
 // Test functions
 
-func testDivisibleby(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testDivisibleby(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("divisibleby test requires 1 argument")
 	}
@@ -1858,41 +1898,41 @@ func testDivisibleby(ctx *Context, value interface{}, args ...interface{}) (bool
 	return math.Mod(num, divisor) == 0, nil
 }
 
-func testDefined(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testDefined(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if isUndefinedValue(value) {
 		return false, nil
 	}
 	return value != nil, nil
 }
 
-func testUndefined(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testUndefined(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	return isUndefinedValue(value), nil
 }
 
-func testNone(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testNone(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	return value == nil, nil
 }
 
-func testBoolean(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testBoolean(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	_, ok := value.(bool)
 	return ok, nil
 }
 
-func testTrue(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testTrue(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if b, ok := value.(bool); ok {
 		return b, nil
 	}
 	return false, nil
 }
 
-func testFalse(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testFalse(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if b, ok := value.(bool); ok {
 		return !b, nil
 	}
 	return false, nil
 }
 
-func testNumber(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testNumber(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	switch value.(type) {
 	case int, int64, float64, float32:
 		return true, nil
@@ -1901,12 +1941,12 @@ func testNumber(ctx *Context, value interface{}, args ...interface{}) (bool, err
 	}
 }
 
-func testString(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testString(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	_, ok := value.(string)
 	return ok, nil
 }
 
-func testInteger(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testInteger(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -1923,7 +1963,7 @@ func testInteger(ctx *Context, value interface{}, args ...interface{}) (bool, er
 	return false, nil
 }
 
-func testFloat(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testFloat(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	switch value.(type) {
 	case float32, float64:
 		return true, nil
@@ -1932,7 +1972,7 @@ func testFloat(ctx *Context, value interface{}, args ...interface{}) (bool, erro
 	}
 }
 
-func testSequence(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testSequence(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	switch value.(type) {
 	case []interface{}, []string, string:
 		return true, nil
@@ -1942,7 +1982,7 @@ func testSequence(ctx *Context, value interface{}, args ...interface{}) (bool, e
 	}
 }
 
-func testMapping(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testMapping(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	switch value.(type) {
 	case map[interface{}]interface{}, map[string]interface{}:
 		return true, nil
@@ -1952,11 +1992,11 @@ func testMapping(ctx *Context, value interface{}, args ...interface{}) (bool, er
 	}
 }
 
-func testIterable(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testIterable(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	return testSequence(ctx, value, args...)
 }
 
-func testCallable(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testCallable(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	kwargs, _ := extractKwargs(args)
 	if kwargs != nil {
 		if attr, ok := kwargs["attribute"]; ok {
@@ -2003,14 +2043,14 @@ func isCallableValue(value interface{}) bool {
 	return true
 }
 
-func testSameas(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testSameas(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("sameas test requires 1 argument")
 	}
 	return value == args[0], nil
 }
 
-func testEscaped(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testEscaped(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -2028,7 +2068,7 @@ func testEscaped(ctx *Context, value interface{}, args ...interface{}) (bool, er
 	return false, nil
 }
 
-func testModule(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testModule(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -2036,7 +2076,7 @@ func testModule(ctx *Context, value interface{}, args ...interface{}) (bool, err
 	return ok, nil
 }
 
-func testList(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testList(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -2051,7 +2091,7 @@ func testList(ctx *Context, value interface{}, args ...interface{}) (bool, error
 	}
 }
 
-func testTuple(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testTuple(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -2059,7 +2099,7 @@ func testTuple(ctx *Context, value interface{}, args ...interface{}) (bool, erro
 	return val.Kind() == reflect.Array, nil
 }
 
-func testDict(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testDict(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if value == nil {
 		return false, nil
 	}
@@ -2067,31 +2107,31 @@ func testDict(ctx *Context, value interface{}, args ...interface{}) (bool, error
 	return val.Kind() == reflect.Map, nil
 }
 
-func testLowerTest(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testLowerTest(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	str := toString(value)
 	return strings.ToLower(str) == str, nil
 }
 
-func testUpperTest(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testUpperTest(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	str := toString(value)
 	return strings.ToUpper(str) == str, nil
 }
 
-func testEven(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testEven(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if num, ok := toInt(value); ok {
 		return num%2 == 0, nil
 	}
 	return false, nil
 }
 
-func testOdd(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testOdd(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if num, ok := toInt(value); ok {
 		return num%2 != 0, nil
 	}
 	return false, nil
 }
 
-func testInTest(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testInTest(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("in test requires 1 argument")
 	}
@@ -2128,7 +2168,7 @@ func testInTest(ctx *Context, value interface{}, args ...interface{}) (bool, err
 	return false, nil
 }
 
-func testFilter(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testFilter(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if ctx == nil || ctx.environment == nil {
 		return false, nil
 	}
@@ -2140,7 +2180,7 @@ func testFilter(ctx *Context, value interface{}, args ...interface{}) (bool, err
 	return ok, nil
 }
 
-func testTest(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testTest(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if ctx == nil || ctx.environment == nil {
 		return false, nil
 	}
@@ -2152,7 +2192,7 @@ func testTest(ctx *Context, value interface{}, args ...interface{}) (bool, error
 	return ok, nil
 }
 
-func testEq(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testEq(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("eq test requires a comparison value")
 	}
@@ -2164,43 +2204,46 @@ func testEq(ctx *Context, value interface{}, args ...interface{}) (bool, error) 
 	return reflect.DeepEqual(value, args[0]), nil
 }
 
-func testNe(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testNe(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	res, err := testEq(ctx, value, args...)
 	if err != nil {
 		return false, err
 	}
-	return !res, nil
+	if boolRes, ok := res.(bool); ok {
+		return !boolRes, nil
+	}
+	return false, nil
 }
 
-func testLt(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testLt(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("lt test requires a comparison value")
 	}
 	return compareNumeric(value, args[0], func(a, b float64) bool { return a < b })
 }
 
-func testLe(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testLe(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("le test requires a comparison value")
 	}
 	return compareNumeric(value, args[0], func(a, b float64) bool { return a <= b })
 }
 
-func testGt(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testGt(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("gt test requires a comparison value")
 	}
 	return compareNumeric(value, args[0], func(a, b float64) bool { return a > b })
 }
 
-func testGe(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testGe(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("ge test requires a comparison value")
 	}
 	return compareNumeric(value, args[0], func(a, b float64) bool { return a >= b })
 }
 
-func testMatching(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testMatching(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("matching test requires a pattern argument")
 	}
@@ -2213,7 +2256,7 @@ func testMatching(ctx *Context, value interface{}, args ...interface{}) (bool, e
 	return match != nil && match[0] == 0, nil
 }
 
-func testSearch(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testSearch(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("search test requires a pattern argument")
 	}
@@ -2225,7 +2268,7 @@ func testSearch(ctx *Context, value interface{}, args ...interface{}) (bool, err
 	return re.FindStringIndex(toString(value)) != nil, nil
 }
 
-func testStartingWith(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testStartingWith(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("startingwith test requires at least one prefix")
 	}
@@ -2238,7 +2281,7 @@ func testStartingWith(ctx *Context, value interface{}, args ...interface{}) (boo
 	return false, nil
 }
 
-func testEndingWith(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testEndingWith(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("endingwith test requires at least one suffix")
 	}
@@ -2251,28 +2294,28 @@ func testEndingWith(ctx *Context, value interface{}, args ...interface{}) (bool,
 	return false, nil
 }
 
-func testContaining(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testContaining(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if len(args) < 1 {
 		return false, fmt.Errorf("containing test requires a substring argument")
 	}
 	return strings.Contains(toString(value), toString(args[0])), nil
 }
 
-func testInfinite(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testInfinite(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if f, ok := toFloat64(value); ok {
 		return math.IsInf(f, 0), nil
 	}
 	return false, nil
 }
 
-func testNan(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testNan(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if f, ok := toFloat64(value); ok {
 		return math.IsNaN(f), nil
 	}
 	return false, nil
 }
 
-func testFinite(ctx *Context, value interface{}, args ...interface{}) (bool, error) {
+func testFinite(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
 	if f, ok := toFloat64(value); ok {
 		return !math.IsNaN(f) && !math.IsInf(f, 0), nil
 	}
