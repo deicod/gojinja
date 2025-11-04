@@ -710,6 +710,39 @@ func TestAwaitExpressions(t *testing.T) {
 		t.Fatalf("expected awaited context function result 'ctx', got %q", strings.TrimSpace(ctxFuncResult))
 	}
 
+	typedFuncResult, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func() (string, error) {
+		return "typed", nil
+	}})
+	if err != nil {
+		t.Fatalf("failed to execute await typed function template: %v", err)
+	}
+	if strings.TrimSpace(typedFuncResult) != "typed" {
+		t.Fatalf("expected awaited typed function result 'typed', got %q", strings.TrimSpace(typedFuncResult))
+	}
+
+	typedCtxResult, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func(ctx *Context) (string, error) {
+		if ctx == nil {
+			return "", fmt.Errorf("missing context")
+		}
+		return "typed-ctx", nil
+	}})
+	if err != nil {
+		t.Fatalf("failed to execute await typed context function template: %v", err)
+	}
+	if strings.TrimSpace(typedCtxResult) != "typed-ctx" {
+		t.Fatalf("expected awaited typed context function result 'typed-ctx', got %q", strings.TrimSpace(typedCtxResult))
+	}
+
+	valueOnlyResult, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func() string {
+		return "only-value"
+	}})
+	if err != nil {
+		t.Fatalf("failed to execute await value-only function template: %v", err)
+	}
+	if strings.TrimSpace(valueOnlyResult) != "only-value" {
+		t.Fatalf("expected awaited value-only function result 'only-value', got %q", strings.TrimSpace(valueOnlyResult))
+	}
+
 	tmplError, err := env.ParseString(`{{ await value }}`, "await_error")
 	if err != nil {
 		t.Fatalf("failed to parse await error template: %v", err)
@@ -721,6 +754,14 @@ func TestAwaitExpressions(t *testing.T) {
 	}
 	if !strings.Contains(execErr.Error(), "boom") {
 		t.Fatalf("expected error to contain original message, got %v", execErr)
+	}
+
+	if _, err := tmplFunc.ExecuteToString(map[string]interface{}{"loader": func() (string, error) {
+		return "", fmt.Errorf("typed boom")
+	}}); err == nil {
+		t.Fatalf("expected error when typed awaitable returns error")
+	} else if !strings.Contains(err.Error(), "typed boom") {
+		t.Fatalf("expected typed awaitable error to contain original message, got %v", err)
 	}
 
 	tmplInvalid, err := env.ParseString(`{{ await value }}`, "await_invalid")
