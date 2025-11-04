@@ -8,7 +8,7 @@ Severity scale: **High** – breaks common templates or core semantics, **Medium
 | Parser | Async statements (`async for`, `async with`) unsupported | Resolved | Environment flag enables parsing with synchronous execution fallbacks |
 | Runtime | Bytecode cache and loader invalidation still missing | Low | `runtime/cache.go` only caches templates in-memory without mtime checks |
 | Runtime | Async rendering & streaming APIs unavailable | Medium | No equivalent to `generate()` or async render pipeline |
-| Macros | Keyword-only/varargs validation, exported template modules incomplete | Medium | Macro registry executes but skips argument contract checks |
+| Macros | Keyword-only/varargs validation, exported template modules incomplete | Resolved | Macro registry enforces argument contracts and module exports support shared contexts (`runtime/macro.go`, `runtime/template.go`) |
 | Expressions | Async/await expressions (`await`, async filters/tests) unsupported | Medium | Blocks templates using `enable_async` helpers |
 | Security | Sandbox coverage for filters/tests/globals incomplete | Medium | Policy builder exists but enforcement gaps remain in `runtime/security.go` |
 | Errors | Stack traces lack full context chain seen in Python | Low | `runtime/errors.go` records position but not multi-frame call stacks |

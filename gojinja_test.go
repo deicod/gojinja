@@ -188,3 +188,45 @@ Hello {{ name }}!
 		t.Fatalf("expected export names to include 'answer', got %v", names)
 	}
 }
+
+func TestMakeModuleWithContext(t *testing.T) {
+	env := NewEnvironment()
+	tmpl, err := env.ParseString(`
+{% set combined = prefix ~ ' ' ~ suffix %}
+{% export combined %}
+`, "module_shared")
+	if err != nil {
+		t.Fatalf("ParseString error: %v", err)
+	}
+
+	ctx := NewContextWithEnvironment(env, map[string]interface{}{"prefix": "Ms."})
+
+	module, err := tmpl.MakeModuleWithContext(ctx, map[string]interface{}{
+		"prefix": "Dr.",
+		"suffix": "Parity",
+	})
+	if err != nil {
+		t.Fatalf("MakeModuleWithContext error: %v", err)
+	}
+
+	exported, ok := module.Resolve("combined")
+	if !ok {
+		t.Fatalf("expected exported value 'combined' to be resolvable")
+	}
+
+	if result := strings.TrimSpace(exported.(string)); result != "Dr. Parity" {
+		t.Fatalf("unexpected exported value: %q", result)
+	}
+
+	if value, ok := ctx.Get("prefix"); !ok || value.(string) != "Ms." {
+		t.Fatalf("expected original context prefix to remain 'Ms.', got %v", value)
+	}
+
+	if _, ok := ctx.Get("suffix"); ok {
+		t.Fatalf("expected temporary variables to be cleared from the shared context")
+	}
+
+	if exports := ctx.Exports(); len(exports) != 0 {
+		t.Fatalf("expected no exports on original context, got %v", exports)
+	}
+}
