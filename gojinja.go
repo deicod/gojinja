@@ -2,6 +2,7 @@
 package gojinja2
 
 import (
+	"io"
 	"path/filepath"
 
 	"github.com/deicod/gojinja/nodes"
@@ -71,6 +72,11 @@ func ParseString(source string) (*Template, error) {
 	return env.NewTemplate(source)
 }
 
+// ParseStringWithName parses a template from a string with the provided name.
+func ParseStringWithName(source, name string) (*Template, error) {
+	return runtime.ParseStringWithName(source, name)
+}
+
 // ParseFile parses a template from a file
 func ParseFile(filename string) (*Template, error) {
 	if filename == "" {
@@ -93,6 +99,71 @@ func ParseFile(filename string) (*Template, error) {
 	return tmpl, nil
 }
 
+// ExecuteToString parses and renders a template string using a default environment.
+func ExecuteToString(templateString string, vars map[string]interface{}) (string, error) {
+	return runtime.ExecuteToString(templateString, vars)
+}
+
+// Execute parses and renders a template string, writing the result to the provided writer.
+func Execute(templateString string, vars map[string]interface{}, writer io.Writer) error {
+	return runtime.Execute(templateString, vars, writer)
+}
+
+// ParseAST creates a template from an AST using the default environment.
+func ParseAST(ast *nodes.Template) (*Template, error) {
+	return runtime.ParseAST(ast)
+}
+
+// ParseASTWithName creates a template from an AST with the specified name using the default environment.
+func ParseASTWithName(ast *nodes.Template, name string) (*Template, error) {
+	return runtime.ParseASTWithName(ast, name)
+}
+
+// ParseASTWithEnvironment creates a template from an AST using the provided environment.
+func ParseASTWithEnvironment(env *Environment, ast *nodes.Template, name string) (*Template, error) {
+	return runtime.ParseASTWithEnvironment(env, ast, name)
+}
+
+// FromString creates a template from a string using the default environment.
+func FromString(templateString string) (*Template, error) {
+	return runtime.FromString(templateString)
+}
+
+// FromStringWithEnvironment creates a template from a string using the provided environment.
+func FromStringWithEnvironment(env *Environment, templateString string) (*Template, error) {
+	return runtime.FromStringWithEnvironment(env, templateString)
+}
+
+// FromAST creates a template from an AST using the default environment.
+func FromAST(ast *nodes.Template) (*Template, error) {
+	return runtime.FromAST(ast)
+}
+
+// FromASTWithEnvironment creates a template from an AST using the provided environment.
+func FromASTWithEnvironment(env *Environment, ast *nodes.Template) (*Template, error) {
+	return runtime.FromASTWithEnvironment(env, ast)
+}
+
+// RenderTemplate renders a template string with the provided context using the default environment.
+func RenderTemplate(templateString string, context map[string]interface{}) (string, error) {
+	return runtime.RenderTemplate(templateString, context)
+}
+
+// RenderTemplateWithEnvironment renders a template string using the provided environment.
+func RenderTemplateWithEnvironment(env *Environment, templateString string, context map[string]interface{}) (string, error) {
+	return runtime.RenderTemplateWithEnvironment(env, templateString, context)
+}
+
+// RenderTemplateToWriter renders a template string to the provided writer using the default environment.
+func RenderTemplateToWriter(templateString string, context map[string]interface{}, writer io.Writer) error {
+	return runtime.RenderTemplateToWriter(templateString, context, writer)
+}
+
+// RenderTemplateToWriterWithEnvironment renders a template string to the provided writer using the supplied environment.
+func RenderTemplateToWriterWithEnvironment(env *Environment, templateString string, context map[string]interface{}, writer io.Writer) error {
+	return runtime.RenderTemplateToWriterWithEnvironment(env, templateString, context, writer)
+}
+
 // Node access for AST manipulation
 
 // Node represents an AST node
@@ -109,6 +180,22 @@ func DumpAST(node Node) string {
 // Walk traverses the AST using the visitor pattern
 func Walk(visitor nodes.Visitor, node Node) {
 	nodes.Walk(visitor, node)
+}
+
+// TemplateChain represents a chain of templates for inheritance-aware rendering.
+type TemplateChain = runtime.TemplateChain
+
+// NewTemplateChain creates a new template chain bound to the provided environment.
+func NewTemplateChain(env *Environment) *TemplateChain {
+	return runtime.NewTemplateChain(env)
+}
+
+// BatchRenderer renders multiple templates efficiently.
+type BatchRenderer = runtime.BatchRenderer
+
+// NewBatchRenderer creates a batch renderer associated with the provided environment.
+func NewBatchRenderer(env *Environment) *BatchRenderer {
+	return runtime.NewBatchRenderer(env)
 }
 
 // Error types
