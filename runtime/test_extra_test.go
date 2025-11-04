@@ -192,6 +192,90 @@ func TestModuleTest(t *testing.T) {
 	}
 }
 
+func TestTestOperatorDynamicArgs(t *testing.T) {
+	tpl := `{% set extras = [5] %}{% if value is divisibleby(*extras) %}yes{% else %}no{% endif %}`
+
+	result, err := ExecuteToString(tpl, map[string]interface{}{"value": 10})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if result != "yes" {
+		t.Fatalf("expected 'yes' when dynamic args expand, got %q", result)
+	}
+
+	result, err = ExecuteToString(tpl, map[string]interface{}{"value": 7})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if result != "no" {
+		t.Fatalf("expected 'no' for non-divisible value, got %q", result)
+	}
+}
+
+func TestTestOperatorDynamicKwargs(t *testing.T) {
+	tpl := `{% set opts = {'attribute': 'upper'} %}{% if value is callable(**opts) %}yes{% else %}no{% endif %}`
+
+	result, err := ExecuteToString(tpl, map[string]interface{}{"value": "go"})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if result != "yes" {
+		t.Fatalf("expected 'yes' when callable attribute resolves, got %q", result)
+	}
+
+	result, err = ExecuteToString(tpl, map[string]interface{}{"value": 42})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if result != "no" {
+		t.Fatalf("expected 'no' for non-callable value, got %q", result)
+	}
+}
+
+func TestTestOperatorDynamicArgsAndKwargs(t *testing.T) {
+	env := NewEnvironment()
+	var captured []interface{}
+
+	env.AddTest("capture", func(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
+		captured = append([]interface{}{}, args...)
+		return true, nil
+	})
+
+	source := `{% set extras = [1, 2] %}{% set opts = {'flag': true} %}{% if subject is capture('anchor', *extras, **opts) %}ok{% endif %}`
+	tpl, err := env.ParseString(source, "capture")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	captured = nil
+	result, err := tpl.ExecuteToString(map[string]interface{}{"subject": 0})
+	if err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if strings.TrimSpace(result) != "ok" {
+		t.Fatalf("expected template to render ok, got %q", result)
+	}
+	if len(captured) != 4 {
+		t.Fatalf("expected four captured arguments, got %d", len(captured))
+	}
+	if arg, ok := captured[0].(string); !ok || arg != "anchor" {
+		t.Fatalf("expected first captured arg to be 'anchor', got %#v", captured[0])
+	}
+	if num, ok := toFloat64(captured[1]); !ok || num != 1 {
+		t.Fatalf("expected second captured arg to be numeric 1, got %#v", captured[1])
+	}
+	if num, ok := toFloat64(captured[2]); !ok || num != 2 {
+		t.Fatalf("expected third captured arg to be numeric 2, got %#v", captured[2])
+	}
+	kwMap, ok := toStringInterfaceMap(captured[3])
+	if !ok {
+		t.Fatalf("expected final captured arg to be keyword map, got %#v", captured[3])
+	}
+	if val, exists := kwMap["flag"]; !exists || val != true {
+		t.Fatalf("expected keyword map to include flag=true, got %#v", kwMap)
+	}
+}
+
 func TestNamespaceGlobal(t *testing.T) {
 	env := NewEnvironment()
 	tpl, err := env.ParseString(`{% set ns = namespace(counter=1) %}{% do ns.set('counter', ns.counter + 4) %}{{ ns.counter }}`, "namespace")

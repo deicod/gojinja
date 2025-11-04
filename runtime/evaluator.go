@@ -3330,6 +3330,8 @@ func (e *Evaluator) evaluateTestOperator(op *nodes.Operand, value interface{}) i
 	var testName string
 	var argExprs []nodes.Expr
 	var kwargExprs []*nodes.Keyword
+	var dynArgExpr nodes.Expr
+	var dynKwargExpr nodes.Expr
 
 	switch expr := op.Expr.(type) {
 	case *nodes.Name:
@@ -3342,9 +3344,8 @@ func (e *Evaluator) evaluateTestOperator(op *nodes.Operand, value interface{}) i
 		testName = nameNode.Name
 		argExprs = expr.Args
 		kwargExprs = expr.Kwargs
-		if expr.DynArgs != nil || expr.DynKwargs != nil {
-			return NewTestError(testName, "dynamic test arguments not yet supported", op.GetPosition(), expr, nil)
-		}
+		dynArgExpr = expr.DynArgs
+		dynKwargExpr = expr.DynKwargs
 	case *nodes.Const:
 		switch v := expr.Value.(type) {
 		case bool:
@@ -3376,15 +3377,56 @@ func (e *Evaluator) evaluateTestOperator(op *nodes.Operand, value interface{}) i
 		args[i] = val
 	}
 
+	if dynArgExpr != nil {
+		dynValue := e.Evaluate(dynArgExpr)
+		if err, ok := dynValue.(error); ok {
+			return err
+		}
+		if dynValue != nil {
+			dynArgs, err := e.toSlice(dynValue, op.GetPosition())
+			if err != nil {
+				return NewTestError(testName, err.Error(), op.GetPosition(), op.Expr, err)
+			}
+			if len(dynArgs) > 0 {
+				args = append(args, dynArgs...)
+			}
+		}
+	}
+
+	var kwargs map[string]interface{}
 	if len(kwargExprs) > 0 {
-		kwargs := make(map[string]interface{}, len(kwargExprs))
+		kwargs = make(map[string]interface{}, len(kwargExprs))
 		for _, kwarg := range kwargExprs {
-			value := e.Evaluate(kwarg.Value)
-			if err, ok := value.(error); ok {
+			kwValue := e.Evaluate(kwarg.Value)
+			if err, ok := kwValue.(error); ok {
 				return err
 			}
-			kwargs[kwarg.Key] = value
+			kwargs[kwarg.Key] = kwValue
 		}
+	}
+
+	if dynKwargExpr != nil {
+		dynValue := e.Evaluate(dynKwargExpr)
+		if err, ok := dynValue.(error); ok {
+			return err
+		}
+		if dynValue != nil {
+			converted, ok := toStringInterfaceMap(dynValue)
+			if !ok {
+				return NewTestError(testName, "dynamic test keyword arguments must be a mapping", op.GetPosition(), op.Expr, nil)
+			}
+			if len(converted) > 0 {
+				if kwargs == nil {
+					kwargs = make(map[string]interface{}, len(converted))
+				}
+				for k, v := range converted {
+					kwargs[k] = v
+				}
+			}
+		}
+	}
+
+	if len(kwargs) > 0 {
 		args = append(args, kwargs)
 	}
 
