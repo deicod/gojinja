@@ -292,6 +292,10 @@ func (t *Template) MakeModuleWithContext(ctx *Context, vars map[string]interface
 	for name, value := range root.exports {
 		originalExports[name] = value
 	}
+	originalRootVars := make(map[string]interface{}, len(root.vars))
+	for name, value := range root.vars {
+		originalRootVars[name] = value
+	}
 	ctx.mu.RUnlock()
 	defer func() {
 		ctx.mu.Lock()
@@ -299,6 +303,10 @@ func (t *Template) MakeModuleWithContext(ctx *Context, vars map[string]interface
 		root.exports = make(map[string]interface{}, len(originalExports))
 		for name, value := range originalExports {
 			root.exports[name] = value
+		}
+		root.vars = make(map[string]interface{}, len(originalRootVars))
+		for name, value := range originalRootVars {
+			root.vars[name] = value
 		}
 		ctx.mu.Unlock()
 	}()
@@ -318,35 +326,13 @@ func (t *Template) MakeModuleWithContext(ctx *Context, vars map[string]interface
 	}
 	defer ctx.SetImportManager(originalImportManager)
 
-	var originalVars map[string]interface{}
-	var missingVars []string
 	if len(vars) > 0 {
 		ctx.mu.Lock()
 		root := ctx.rootScope()
-		originalVars = make(map[string]interface{}, len(vars))
-		missingVars = make([]string, 0)
 		for name, value := range vars {
-			if existing, ok := root.vars[name]; ok {
-				originalVars[name] = existing
-			} else {
-				missingVars = append(missingVars, name)
-			}
 			root.vars[name] = value
 		}
 		ctx.mu.Unlock()
-	}
-	if len(vars) > 0 {
-		defer func() {
-			ctx.mu.Lock()
-			root := ctx.rootScope()
-			for name, value := range originalVars {
-				root.vars[name] = value
-			}
-			for _, name := range missingVars {
-				delete(root.vars, name)
-			}
-			ctx.mu.Unlock()
-		}()
 	}
 
 	oldWriter := ctx.writer

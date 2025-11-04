@@ -168,6 +168,10 @@ func TestTemplateMakeModuleWithContext(t *testing.T) {
 		t.Fatalf("expected original context prefix to remain 'Ms.', got %v", prefix)
 	}
 
+	if _, ok := ctx.Get("combined"); ok {
+		t.Fatalf("expected internal root variables to be restored after module execution")
+	}
+
 	if _, ok := ctx.Get("suffix"); ok {
 		t.Fatalf("expected temporary variables to be removed from the shared context")
 	}
