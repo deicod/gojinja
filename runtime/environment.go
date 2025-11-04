@@ -1244,6 +1244,9 @@ func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, erro
 			return nil, NewError(ErrorTypeTemplate, "template reference cannot be nil", nodes.Position{}, nil)
 		}
 		return v, nil
+	case Template:
+		tmpl := v
+		return &tmpl, nil
 	case []string:
 		return env.SelectTemplate(v)
 	case []*Template:
@@ -1254,6 +1257,12 @@ func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, erro
 			return tmpl, nil
 		}
 		return nil, NewError(ErrorTypeTemplate, "template list must contain at least one non-nil template", nodes.Position{}, nil)
+	case []Template:
+		for _, tmpl := range v {
+			copy := tmpl
+			return &copy, nil
+		}
+		return nil, NewError(ErrorTypeTemplate, "template list must contain at least one template", nodes.Position{}, nil)
 	case []interface{}:
 		if len(v) == 0 {
 			return nil, NewError(ErrorTypeTemplate, "template list must not be empty", nodes.Position{}, nil)
@@ -1288,9 +1297,14 @@ func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, erro
 				return nil, err
 			case *Template:
 				if value == nil {
-					return nil, NewError(ErrorTypeTemplate, "template reference cannot be nil", nodes.Position{}, nil)
+					continue
 				}
 				return value, nil
+			case Template:
+				copy := value
+				return &copy, nil
+			case nil:
+				continue
 			default:
 				return nil, NewError(ErrorTypeTemplate,
 					fmt.Sprintf("template list must contain strings or *Template, got %T", item),
