@@ -96,6 +96,29 @@ func ParseStringWithName(source, name string) (*Template, error) {
 	return runtime.ParseStringWithName(source, name)
 }
 
+// GetTemplate retrieves a template by name using the provided environment.
+func GetTemplate(env *Environment, name string) (*Template, error) {
+	return runtime.GetTemplate(env, name)
+}
+
+// SelectTemplate resolves the first available template from the provided
+// candidates using the environment loader.
+func SelectTemplate(env *Environment, names []string) (*Template, error) {
+	return runtime.SelectTemplate(env, names)
+}
+
+// GetOrSelectTemplate mirrors Jinja2's helper for resolving template names or
+// template objects against the provided environment.
+func GetOrSelectTemplate(env *Environment, target interface{}) (*Template, error) {
+	return runtime.GetOrSelectTemplate(env, target)
+}
+
+// JoinPath combines a template path with its parent template name using the
+// environment's loader semantics.
+func JoinPath(env *Environment, template, parent string) (string, error) {
+	return runtime.JoinPath(env, template, parent)
+}
+
 // ParseFile parses a template from a file
 func ParseFile(filename string) (*Template, error) {
 	if filename == "" {

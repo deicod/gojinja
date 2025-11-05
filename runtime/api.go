@@ -21,6 +21,48 @@ func ParseStringWithName(templateString, name string) (*Template, error) {
 	return env.ParseString(templateString, name)
 }
 
+func ensureEnvironment(env *Environment) error {
+	if env == nil {
+		return NewError(ErrorTypeTemplate, "environment must not be nil", nodes.Position{}, nil)
+	}
+	return nil
+}
+
+// GetTemplate retrieves a template by name using the provided environment.
+func GetTemplate(env *Environment, name string) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	return env.GetTemplate(name)
+}
+
+// SelectTemplate resolves the first available template from the provided list
+// of names, mirroring Jinja2's select_template helper.
+func SelectTemplate(env *Environment, names []string) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	return env.SelectTemplate(names)
+}
+
+// GetOrSelectTemplate resolves templates passed as names or template objects,
+// behaving like Jinja2's get_or_select_template helper.
+func GetOrSelectTemplate(env *Environment, target interface{}) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	return env.GetOrSelectTemplate(target)
+}
+
+// JoinPath combines a template path with its parent template using the
+// environment's loader join semantics.
+func JoinPath(env *Environment, template, parent string) (string, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return "", err
+	}
+	return env.JoinPath(template, parent)
+}
+
 // ParseString parses a template string using this environment
 func (env *Environment) ParseString(templateString, name string) (*Template, error) {
 	parserEnv := &parser.Environment{
@@ -84,7 +126,10 @@ func FromString(templateString string) (*Template, error) {
 
 // FromStringWithEnvironment creates a new template from a string using a specific environment
 func FromStringWithEnvironment(env *Environment, templateString string) (*Template, error) {
-	return env.ParseString(templateString, "template")
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	return env.FromString(templateString)
 }
 
 // FromAST creates a new template from an AST using the default environment

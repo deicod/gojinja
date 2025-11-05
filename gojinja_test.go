@@ -189,6 +189,64 @@ Hello {{ name }}!
 	}
 }
 
+func TestEnvironmentHelperFunctions(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{
+		"one.html": "One",
+		"two.html": "Two",
+	}))
+
+	tmpl, err := GetTemplate(env, "one.html")
+	if err != nil {
+		t.Fatalf("GetTemplate error: %v", err)
+	}
+
+	if out, err := tmpl.ExecuteToString(nil); err != nil || strings.TrimSpace(out) != "One" {
+		if err != nil {
+			t.Fatalf("template execution failed: %v", err)
+		}
+		t.Fatalf("unexpected GetTemplate render output: %q", out)
+	}
+
+	selected, err := SelectTemplate(env, []string{"missing.html", "two.html"})
+	if err != nil {
+		t.Fatalf("SelectTemplate error: %v", err)
+	}
+
+	if out, err := selected.ExecuteToString(nil); err != nil || strings.TrimSpace(out) != "Two" {
+		if err != nil {
+			t.Fatalf("selected template execution failed: %v", err)
+		}
+		t.Fatalf("unexpected SelectTemplate output: %q", out)
+	}
+
+	resolved, err := GetOrSelectTemplate(env, []interface{}{"missing.html", tmpl})
+	if err != nil {
+		t.Fatalf("GetOrSelectTemplate error: %v", err)
+	}
+
+	if resolved != tmpl {
+		t.Fatalf("expected GetOrSelectTemplate to return provided template instance")
+	}
+
+	joined, err := JoinPath(env, "partials/header.html", "layouts/base.html")
+	if err != nil {
+		t.Fatalf("JoinPath error: %v", err)
+	}
+
+	if joined != "layouts/partials/header.html" {
+		t.Fatalf("unexpected JoinPath result: %q", joined)
+	}
+
+	if _, err := GetTemplate(nil, "missing.html"); err == nil {
+		t.Fatalf("expected GetTemplate to error with nil environment")
+	}
+
+	if _, err := JoinPath(nil, "child.html", "base.html"); err == nil {
+		t.Fatalf("expected JoinPath to error with nil environment")
+	}
+}
+
 func TestMakeModuleWithContext(t *testing.T) {
 	env := NewEnvironment()
 	tmpl, err := env.ParseString(`
