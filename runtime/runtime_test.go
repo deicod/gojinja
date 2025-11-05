@@ -772,6 +772,17 @@ func TestAwaitExpressions(t *testing.T) {
 	if _, err := tmplInvalid.ExecuteToString(map[string]interface{}{"value": 42}); err == nil {
 		t.Fatalf("expected error when awaiting non-awaitable value")
 	}
+
+	tmplNone, err := env.ParseString(`{{ await none }}`, "await_none")
+	if err != nil {
+		t.Fatalf("failed to parse await none template: %v", err)
+	}
+
+	if _, err := tmplNone.ExecuteToString(nil); err == nil {
+		t.Fatalf("expected error when awaiting literal none")
+	} else if !strings.Contains(err.Error(), "not awaitable") {
+		t.Fatalf("expected await error to mention non-awaitable value, got %v", err)
+	}
 }
 
 func TestAsyncFiltersTestsAndGlobals(t *testing.T) {
