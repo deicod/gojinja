@@ -1968,13 +1968,16 @@ func (e *Evaluator) autoAwaitValue(value interface{}, node nodes.Node) interface
 }
 
 func (e *Evaluator) resolveAwaitable(value interface{}, node nodes.Node, require bool) interface{} {
-	if value == nil {
-		return nil
-	}
-
 	pos := nodes.Position{}
 	if node != nil {
 		pos = node.GetPosition()
+	}
+
+	if value == nil {
+		if require {
+			return NewError(ErrorTypeTemplate, fmt.Sprintf("object of type %T is not awaitable", value), pos, node)
+		}
+		return nil
 	}
 
 	switch awaitable := value.(type) {
