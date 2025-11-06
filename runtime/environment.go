@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -268,6 +269,7 @@ type Environment struct {
 	compiledTemplates map[string]*Template
 	cache             *TemplateCache
 	macroRegistry     *MacroRegistry
+	bytecodeCache     BytecodeCache
 	urlFor            GlobalFunc
 	mu                sync.RWMutex
 	loadingTemplates  map[string]bool // Guard against concurrent loading of the same template
@@ -1169,6 +1171,12 @@ func (env *Environment) LoadTemplate(name string) (*Template, error) {
 		return tmpl, nil
 	}
 
+	if tmpl, ok, err := env.tryLoadFromBytecodeCache(name); err != nil {
+		return nil, err
+	} else if ok {
+		return tmpl, nil
+	}
+
 	env.mu.Lock()
 	// Check if this template is currently being loaded (circular dependency detection)
 	if env.loadingTemplates[name] {
@@ -1422,6 +1430,179 @@ func (env *Environment) CacheSize() int {
 	return env.cache.Size()
 }
 
+// SetBytecodeCache configures the bytecode cache implementation used when
+// compiling templates. Passing nil disables bytecode caching.
+func (env *Environment) SetBytecodeCache(cache BytecodeCache) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.bytecodeCache = cache
+}
+
+// BytecodeCache returns the currently configured bytecode cache, if any.
+func (env *Environment) BytecodeCache() BytecodeCache {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+	return env.bytecodeCache
+}
+
+// ClearBytecodeCache clears all entries from the configured bytecode cache.
+func (env *Environment) ClearBytecodeCache() error {
+	env.mu.RLock()
+	cache := env.bytecodeCache
+	env.mu.RUnlock()
+
+	if cache == nil {
+		return nil
+	}
+
+	return cache.Clear()
+}
+
+// bytecodeSignature generates a string capturing the environment options that
+// influence code generation. Changing any of these should invalidate cached
+// bytecode artifacts to mirror Jinja2's behaviour.
+func (env *Environment) bytecodeSignature() string {
+	env.mu.RLock()
+	defer env.mu.RUnlock()
+
+	extNames := make([]string, len(env.extensions))
+	for i, ext := range env.extensions {
+		extNames[i] = reflect.TypeOf(ext).String()
+	}
+	sort.Strings(extNames)
+
+	return fmt.Sprintf(
+		"autoescape=%v|trim=%t|lstrip=%t|keep=%t|lineStmt=%s|lineComment=%s|async=%t|newline=%s|extensions=%s",
+		env.autoescape,
+		env.trimBlocks,
+		env.lstripBlocks,
+		env.keepTrailingNewline,
+		env.lineStatementPrefix,
+		env.lineCommentPrefix,
+		env.enableAsync,
+		env.newlineSequence,
+		strings.Join(extNames, ","),
+	)
+}
+
+func (env *Environment) bytecodeCacheKey(name, signature string) string {
+	return fmt.Sprintf("%s|%s", name, signature)
+}
+
+func (env *Environment) dependenciesValid(deps map[string]time.Time) bool {
+	if len(deps) == 0 {
+		return true
+	}
+
+	env.mu.RLock()
+	loader := env.loader
+	env.mu.RUnlock()
+
+	if loader == nil {
+		return false
+	}
+
+	for dep, modTime := range deps {
+		current, err := getModTime(loader, dep)
+		if err != nil {
+			return false
+		}
+
+		if modTime.IsZero() || current.IsZero() {
+			if modTime.IsZero() && current.IsZero() {
+				continue
+			}
+			return false
+		}
+
+		if !current.Equal(modTime) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (env *Environment) tryLoadFromBytecodeCache(name string) (*Template, bool, error) {
+	signature := env.bytecodeSignature()
+
+	env.mu.RLock()
+	cache := env.bytecodeCache
+	env.mu.RUnlock()
+
+	if cache == nil {
+		return nil, false, nil
+	}
+
+	key := env.bytecodeCacheKey(name, signature)
+	artifact, err := cache.Load(key)
+	if err != nil {
+		return nil, false, err
+	}
+	if artifact == nil {
+		return nil, false, nil
+	}
+
+	if artifact.EnvSignature != signature {
+		_ = cache.Remove(key)
+		return nil, false, nil
+	}
+
+	if !env.dependenciesValid(artifact.Dependencies) {
+		_ = cache.Remove(key)
+		return nil, false, nil
+	}
+
+	tmpl, err := env.NewTemplateFromAST(artifact.AST, name)
+	if err != nil {
+		_ = cache.Remove(key)
+		return nil, false, err
+	}
+
+	if tmpl.inheritanceCtx != nil && len(artifact.ParentBlocks) > 0 {
+		for blockName, parent := range artifact.ParentBlocks {
+			tmpl.inheritanceCtx.SetParentBlock(blockName, parent)
+		}
+	}
+
+	env.cache.Set(name, tmpl, artifact.Dependencies)
+
+	return tmpl, true, nil
+}
+
+func (env *Environment) storeBytecodeArtifact(name string, ast *nodes.Template, parentBlocks map[string]*nodes.Block, dependencies map[string]time.Time) error {
+	env.mu.RLock()
+	cache := env.bytecodeCache
+	env.mu.RUnlock()
+
+	if cache == nil {
+		return nil
+	}
+
+	signature := env.bytecodeSignature()
+	artifact := &BytecodeArtifact{
+		AST:          ast,
+		ParentBlocks: make(map[string]*nodes.Block, len(parentBlocks)),
+		Dependencies: make(map[string]time.Time, len(dependencies)),
+		EnvSignature: signature,
+		GeneratedAt:  time.Now(),
+	}
+
+	for name, block := range parentBlocks {
+		artifact.ParentBlocks[name] = block
+	}
+	for dep, modTime := range dependencies {
+		artifact.Dependencies[dep] = modTime
+	}
+
+	key := env.bytecodeCacheKey(name, signature)
+	if err := cache.Store(key, artifact); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetMacroRegistry returns the macro registry
 func (env *Environment) GetMacroRegistry() *MacroRegistry {
 	env.mu.RLock()
@@ -1519,6 +1700,10 @@ func (env *Environment) parseTemplateFromString(source, name string) (*Template,
 			}
 			dependencies[depName] = modTime
 		}
+	}
+
+	if err := env.storeBytecodeArtifact(name, processedAST, parentBlocks, dependencies); err != nil {
+		return nil, err
 	}
 	env.cache.Set(name, tmpl, dependencies)
 

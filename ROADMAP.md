@@ -14,9 +14,9 @@
 
 ## Stage 2 – Advanced Runtime Alignment
 
-1. **Caching & Bytecode**
-   - Introduce a bytecode cache abstraction with filesystem mtime invalidation.
-   - Allow pluggable cache stores that mirror Jinja's `FileSystemBytecodeCache` and friends.
+1. **Caching & Bytecode** *(Completed)*
+   - Bytecode cache abstraction with loader-driven invalidation is available via the runtime environment.
+   - Memory-backed cache mirrors Jinja's default behaviour and enables custom cache implementations.
 2. **Async & Streaming Rendering**
    - Add async-aware filters/tests/globals and expose streaming APIs akin to `Template.generate()`.
    - Evaluate goroutine-based rendering helpers for concurrent output.
