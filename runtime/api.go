@@ -150,6 +150,10 @@ type TemplateChain struct {
 
 // NewTemplateChain creates a new template chain
 func NewTemplateChain(env *Environment) *TemplateChain {
+	if env == nil {
+		env = NewEnvironment()
+	}
+
 	return &TemplateChain{
 		templates:   make([]*Template, 0),
 		environment: env,
@@ -163,6 +167,10 @@ func (tc *TemplateChain) Add(template *Template) {
 
 // AddFromString adds a template from string to the chain
 func (tc *TemplateChain) AddFromString(templateString, name string) error {
+	if tc.environment == nil {
+		tc.environment = NewEnvironment()
+	}
+
 	template, err := tc.environment.ParseString(templateString, name)
 	if err != nil {
 		return err
@@ -173,6 +181,10 @@ func (tc *TemplateChain) AddFromString(templateString, name string) error {
 
 // AddFromAST adds a template from AST to the chain
 func (tc *TemplateChain) AddFromAST(ast *nodes.Template, name string) error {
+	if tc.environment == nil {
+		tc.environment = NewEnvironment()
+	}
+
 	template, err := tc.environment.NewTemplateFromAST(ast, name)
 	if err != nil {
 		return err
@@ -295,6 +307,10 @@ type BatchRenderer struct {
 
 // NewBatchRenderer creates a new batch renderer
 func NewBatchRenderer(env *Environment) *BatchRenderer {
+	if env == nil {
+		env = NewEnvironment()
+	}
+
 	return &BatchRenderer{
 		environment: env,
 		templates:   make(map[string]*Template),
@@ -303,6 +319,10 @@ func NewBatchRenderer(env *Environment) *BatchRenderer {
 
 // AddTemplate adds a template to the batch renderer
 func (br *BatchRenderer) AddTemplate(name, templateString string) error {
+	if br.environment == nil {
+		br.environment = NewEnvironment()
+	}
+
 	template, err := br.environment.ParseString(templateString, name)
 	if err != nil {
 		return err
@@ -313,6 +333,10 @@ func (br *BatchRenderer) AddTemplate(name, templateString string) error {
 
 // AddTemplateFromAST adds a template from AST to the batch renderer
 func (br *BatchRenderer) AddTemplateFromAST(name string, ast *nodes.Template) error {
+	if br.environment == nil {
+		br.environment = NewEnvironment()
+	}
+
 	template, err := br.environment.NewTemplateFromAST(ast, name)
 	if err != nil {
 		return err
