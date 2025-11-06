@@ -50,8 +50,10 @@ func TestTemplateStreamWriteToTrimsTrailingNewline(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := stream.WriteTo(&buf); err != nil {
+	if written, err := stream.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo error: %v", err)
+	} else if written != int64(len("value")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("value"), written)
 	}
 
 	if buf.String() != "value" {
@@ -74,8 +76,10 @@ func TestTemplateStreamKeepTrailingNewline(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := stream.WriteTo(&buf); err != nil {
+	if written, err := stream.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo error: %v", err)
+	} else if written != int64(len("value\n")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("value\n"), written)
 	}
 
 	if buf.String() != "value\n" {
