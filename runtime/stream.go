@@ -82,22 +82,31 @@ func (s *TemplateStream) Collect() (string, error) {
 // WriteTo copies the remaining fragments to the supplied writer. Trailing
 // newlines are trimmed to match the environment unless
 // “keep_trailing_newline“ is enabled. Errors raised during rendering stop the
-// stream and are returned to the caller.
-func (s *TemplateStream) WriteTo(w io.Writer) error {
+// stream and are returned to the caller. The number of bytes written to the
+// supplied writer is returned to mirror Go's io.WriterTo contract.
+func (s *TemplateStream) WriteTo(w io.Writer) (int64, error) {
 	consumer := newTrimAwareWriter(w, s.trimLast)
+	var written int64
+
 	for {
 		chunk, err := s.Next()
 		if err != nil {
 			if err == io.EOF {
-				return consumer.Flush()
+				flushed, flushErr := consumer.Flush()
+				written += flushed
+				return written, flushErr
 			}
-			if flushErr := consumer.Flush(); flushErr != nil {
-				return flushErr
+			flushed, flushErr := consumer.Flush()
+			written += flushed
+			if flushErr != nil {
+				return written, flushErr
 			}
-			return err
+			return written, err
 		}
-		if err := consumer.WriteChunk(chunk); err != nil {
-			return err
+		chunkWritten, writeErr := consumer.WriteChunk(chunk)
+		written += chunkWritten
+		if writeErr != nil {
+			return written, writeErr
 		}
 	}
 }
@@ -123,31 +132,50 @@ func newTrimAwareWriter(w io.Writer, trim bool) *trimAwareWriter {
 	return &trimAwareWriter{writer: w, trim: trim}
 }
 
-func (w *trimAwareWriter) WriteChunk(chunk string) error {
+func (w *trimAwareWriter) WriteChunk(chunk string) (int64, error) {
+	var written int64
+
 	if !w.trim {
 		if len(w.pending) > 0 {
-			if _, err := w.writer.Write(w.pending); err != nil {
-				return err
+			n, err := w.writer.Write(w.pending)
+			written += int64(n)
+			if err != nil {
+				if n > 0 {
+					w.pending = w.pending[n:]
+				}
+				return written, err
 			}
 			w.pending = w.pending[:0]
 		}
 		if chunk == "" {
-			return nil
+			return written, nil
 		}
-		_, err := io.WriteString(w.writer, chunk)
-		return err
+		n, err := io.WriteString(w.writer, chunk)
+		written += int64(n)
+		return written, err
 	}
 
 	if len(chunk) == 0 && len(w.pending) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	combined := append(w.pending, chunk...)
 	keep := trailingNewlineLength(combined)
 	flushLen := len(combined) - keep
 	if flushLen > 0 {
-		if _, err := w.writer.Write(combined[:flushLen]); err != nil {
-			return err
+		n, err := w.writer.Write(combined[:flushLen])
+		written += int64(n)
+		if err != nil {
+			if n < flushLen {
+				remaining := combined[n:]
+				if cap(w.pending) < len(remaining) {
+					w.pending = make([]byte, len(remaining))
+				} else {
+					w.pending = w.pending[:len(remaining)]
+				}
+				copy(w.pending, remaining)
+			}
+			return written, err
 		}
 	}
 	if keep > 0 {
@@ -161,31 +189,45 @@ func (w *trimAwareWriter) WriteChunk(chunk string) error {
 		w.pending = w.pending[:0]
 	}
 
-	return nil
+	return written, nil
 }
 
-func (w *trimAwareWriter) Flush() error {
+func (w *trimAwareWriter) Flush() (int64, error) {
 	if !w.trim {
 		if len(w.pending) == 0 {
-			return nil
+			return 0, nil
 		}
-		_, err := w.writer.Write(w.pending)
+		n, err := w.writer.Write(w.pending)
+		written := int64(n)
+		if err != nil {
+			if n > 0 {
+				w.pending = w.pending[n:]
+			}
+			return written, err
+		}
 		w.pending = w.pending[:0]
-		return err
+		return written, nil
 	}
 
 	if len(w.pending) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	if trailingNewlineLength(w.pending) == len(w.pending) {
 		w.pending = w.pending[:0]
-		return nil
+		return 0, nil
 	}
 
-	_, err := w.writer.Write(w.pending)
+	n, err := w.writer.Write(w.pending)
+	written := int64(n)
+	if err != nil {
+		if n > 0 {
+			w.pending = w.pending[n:]
+		}
+		return written, err
+	}
 	w.pending = w.pending[:0]
-	return err
+	return written, nil
 }
 
 func trailingNewlineLength(data []byte) int {
