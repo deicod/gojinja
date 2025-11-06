@@ -116,6 +116,9 @@ func ParseASTWithName(ast *nodes.Template, name string) (*Template, error) {
 
 // ParseASTWithEnvironment creates a template from an AST using the given environment
 func ParseASTWithEnvironment(env *Environment, ast *nodes.Template, name string) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
 	return env.NewTemplateFromAST(ast, name)
 }
 
@@ -139,6 +142,9 @@ func FromAST(ast *nodes.Template) (*Template, error) {
 
 // FromASTWithEnvironment creates a new template from an AST using a specific environment
 func FromASTWithEnvironment(env *Environment, ast *nodes.Template) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
 	return env.NewTemplateFromAST(ast, "template")
 }
 
@@ -278,6 +284,10 @@ func RenderTemplate(templateString string, context map[string]interface{}) (stri
 
 // RenderTemplateWithEnvironment renders a template with the given context and environment
 func RenderTemplateWithEnvironment(env *Environment, templateString string, context map[string]interface{}) (string, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return "", err
+	}
+
 	template, err := env.ParseString(templateString, "template")
 	if err != nil {
 		return "", err
@@ -292,6 +302,10 @@ func RenderTemplateToWriter(templateString string, context map[string]interface{
 
 // RenderTemplateToWriterWithEnvironment renders a template to the given writer with environment
 func RenderTemplateToWriterWithEnvironment(env *Environment, templateString string, context map[string]interface{}, writer io.Writer) error {
+	if err := ensureEnvironment(env); err != nil {
+		return err
+	}
+
 	template, err := env.ParseString(templateString, "template")
 	if err != nil {
 		return err
