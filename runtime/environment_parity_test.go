@@ -158,6 +158,88 @@ func TestEnvironmentGetOrSelectTemplateMixedList(t *testing.T) {
 	}
 }
 
+func TestEnvironmentGetOrSelectTemplateNestedStringList(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{
+		"two.html": "Two",
+	}))
+
+	candidates := []interface{}{
+		[]string{"missing.html", "two.html"},
+		"fallback.html",
+	}
+
+	resolved, err := env.GetOrSelectTemplate(candidates)
+	if err != nil {
+		t.Fatalf("unexpected error resolving nested string list: %v", err)
+	}
+
+	if resolved == nil || resolved.Name() != "two.html" {
+		t.Fatalf("expected nested string list to resolve two.html, got %v", resolved)
+	}
+}
+
+func TestEnvironmentGetOrSelectTemplateNestedInterfaceList(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{}))
+
+	inline, err := env.NewTemplateWithName("Inline", "inline")
+	if err != nil {
+		t.Fatalf("failed to create inline template: %v", err)
+	}
+
+	candidates := []interface{}{
+		[]interface{}{"missing.html", inline},
+	}
+
+	resolved, err := env.GetOrSelectTemplate(candidates)
+	if err != nil {
+		t.Fatalf("unexpected error resolving nested interface list: %v", err)
+	}
+
+	if resolved != inline {
+		t.Fatalf("expected inline template from nested interface list")
+	}
+}
+
+func TestEnvironmentGetOrSelectTemplateNestedListErrorAggregation(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{}))
+
+	_, err := env.GetOrSelectTemplate([]interface{}{
+		[]string{"missing-one.html"},
+		[]interface{}{"missing-two.html", []string{"missing-three.html"}},
+	})
+	if err == nil {
+		t.Fatalf("expected error when no nested candidates resolve")
+	}
+
+	var multi *TemplatesNotFoundError
+	if !errors.As(err, &multi) {
+		t.Fatalf("expected TemplatesNotFoundError, got %T", err)
+	}
+
+	expectedNames := []string{"missing-one.html", "missing-two.html", "missing-three.html"}
+	if len(multi.Names) != len(expectedNames) {
+		t.Fatalf("expected names %v, got %v", expectedNames, multi.Names)
+	}
+
+	for _, name := range expectedNames {
+		if !containsString(multi.Names, name) {
+			t.Fatalf("expected aggregated names to include %q, got %v", name, multi.Names)
+		}
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestEnvironmentFromString(t *testing.T) {
 	env := NewEnvironment()
 	tmpl, err := env.FromString("Hello {{ name }}!")
