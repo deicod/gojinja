@@ -103,6 +103,29 @@ func Execute(templateString string, vars map[string]interface{}, writer io.Write
 	return template.Execute(vars, writer)
 }
 
+// Generate parses a template string and returns a streaming renderer that
+// yields fragments as they are produced during execution.
+func Generate(templateString string, vars map[string]interface{}) (*TemplateStream, error) {
+	template, err := ParseString(templateString)
+	if err != nil {
+		return nil, err
+	}
+	return template.Generate(vars)
+}
+
+// GenerateWithEnvironment parses a template string using the provided
+// environment and returns a streaming renderer.
+func GenerateWithEnvironment(env *Environment, templateString string, vars map[string]interface{}) (*TemplateStream, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	tmpl, err := env.ParseString(templateString, "template")
+	if err != nil {
+		return nil, err
+	}
+	return tmpl.Generate(vars)
+}
+
 // ParseAST creates a template from an existing AST
 func ParseAST(ast *nodes.Template) (*Template, error) {
 	return ParseASTWithName(ast, "template")

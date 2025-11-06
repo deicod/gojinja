@@ -14,6 +14,7 @@ const Version = "0.1.0"
 
 // Template represents a compiled Jinja2 template
 type Template = runtime.Template
+type TemplateStream = runtime.TemplateStream
 
 // Environment represents the Jinja2 environment
 type Environment = runtime.Environment
@@ -204,6 +205,16 @@ func RenderTemplateToWriter(templateString string, context map[string]interface{
 // RenderTemplateToWriterWithEnvironment renders a template string to the provided writer using the supplied environment.
 func RenderTemplateToWriterWithEnvironment(env *Environment, templateString string, context map[string]interface{}, writer io.Writer) error {
 	return runtime.RenderTemplateToWriterWithEnvironment(env, templateString, context, writer)
+}
+
+// Generate renders a template string as a stream using the default environment.
+func Generate(templateString string, context map[string]interface{}) (*TemplateStream, error) {
+	return runtime.Generate(templateString, context)
+}
+
+// GenerateWithEnvironment renders a template string as a stream using the provided environment.
+func GenerateWithEnvironment(env *Environment, templateString string, context map[string]interface{}) (*TemplateStream, error) {
+	return runtime.GenerateWithEnvironment(env, templateString, context)
 }
 
 // Node access for AST manipulation

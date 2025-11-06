@@ -177,6 +177,25 @@ func (t *Template) Execute(vars map[string]interface{}, writer io.Writer) error 
 	return err
 }
 
+// Generate returns a streaming renderer for the template that yields rendered
+// fragments as they are produced. The returned stream honours the
+// environment's trailing newline policy when collected or written.
+func (t *Template) Generate(vars map[string]interface{}) (*TemplateStream, error) {
+	stream := newTemplateStream(!t.environment.ShouldKeepTrailingNewline())
+
+	ctx := NewContextWithEnvironment(t.environment, vars)
+	ctx.SetAutoescape(t.autoescape)
+	ctx.current = t
+
+	go func() {
+		ctx.writer = &streamWriter{stream: stream}
+		err := t.ExecuteWithContext(ctx)
+		stream.close(err)
+	}()
+
+	return stream, nil
+}
+
 // ExecuteWithContext renders the template using an existing context
 func (t *Template) ExecuteWithContext(ctx *Context) error {
 	// Create evaluator - use secure evaluator if environment is sandboxed
