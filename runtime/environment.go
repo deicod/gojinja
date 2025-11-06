@@ -1294,71 +1294,193 @@ func (env *Environment) GetOrSelectTemplate(target interface{}) (*Template, erro
 		}
 		return nil, NewError(ErrorTypeTemplate, "template list must contain at least one template", nodes.Position{}, nil)
 	case []interface{}:
-		if len(v) == 0 {
-			return nil, NewError(ErrorTypeTemplate, "template list must not be empty", nodes.Position{}, nil)
+		tracker := &templateResolutionTracker{}
+		tmpl, err := env.resolveTemplateCandidates(v, tracker)
+		if err != nil {
+			return nil, err
+		}
+		if tmpl != nil {
+			return tmpl, nil
 		}
 
-		names := make([]string, 0, len(v))
-		tried := make([]string, 0, len(v))
-		var lastErr error
-
-		for _, item := range v {
-			switch value := item.(type) {
-			case string:
-				names = append(names, value)
-				tmpl, err := env.LoadTemplate(value)
-				if err == nil {
-					return tmpl, nil
-				}
-
-				if isTemplateNotFoundError(err) {
-					if err != nil {
-						var single *TemplateNotFoundError
-						if errors.As(err, &single) && single != nil && len(single.Tried) > 0 {
-							tried = append(tried, single.Tried...)
-						} else {
-							tried = append(tried, value)
-						}
-					}
-					lastErr = err
-					continue
-				}
-
-				return nil, err
-			case *Template:
-				if value == nil {
-					continue
-				}
-				return value, nil
-			case Template:
-				copy := value
-				return &copy, nil
-			case nil:
-				continue
-			default:
-				return nil, NewError(ErrorTypeTemplate,
-					fmt.Sprintf("template list must contain strings or *Template, got %T", item),
-					nodes.Position{}, nil)
-			}
+		if resErr := tracker.error(); resErr != nil {
+			return nil, resErr
 		}
 
-		if len(names) == 0 {
-			return nil, NewError(ErrorTypeTemplate, "template list must contain at least one template name", nodes.Position{}, nil)
-		}
-
-		if lastErr != nil {
-			if len(names) == 1 {
-				return nil, lastErr
-			}
-			return nil, NewTemplatesNotFound(names, tried, lastErr)
-		}
-
-		return nil, NewError(ErrorTypeTemplate, "no templates found", nodes.Position{}, nil)
+		return nil, NewError(ErrorTypeTemplate, "template list must contain at least one template name", nodes.Position{}, nil)
 	default:
 		return nil, NewError(ErrorTypeTemplate,
 			fmt.Sprintf("unsupported template target type %T", target),
 			nodes.Position{}, nil)
 	}
+}
+
+type templateResolutionTracker struct {
+	names   []string
+	tried   []string
+	lastErr error
+}
+
+func (t *templateResolutionTracker) addName(name string) {
+	if name == "" {
+		return
+	}
+	t.names = append(t.names, name)
+}
+
+func (t *templateResolutionTracker) addNames(names []string) {
+	for _, name := range names {
+		t.addName(name)
+	}
+}
+
+func (t *templateResolutionTracker) addTried(entries []string) {
+	for _, entry := range entries {
+		if entry == "" {
+			continue
+		}
+		t.tried = append(t.tried, entry)
+	}
+}
+
+func (t *templateResolutionTracker) recordNotFound(err error, fallback string) {
+	if err == nil {
+		return
+	}
+
+	t.lastErr = err
+
+	switch e := err.(type) {
+	case *TemplateNotFoundError:
+		if e.Name != "" {
+			t.addName(e.Name)
+		} else if fallback != "" {
+			t.addName(fallback)
+		}
+		if len(e.Tried) > 0 {
+			t.addTried(e.Tried)
+		} else if fallback != "" {
+			t.addTried([]string{fallback})
+		}
+	case *TemplatesNotFoundError:
+		t.addNames(e.Names)
+		t.addTried(e.Tried)
+	default:
+		if fallback != "" {
+			t.addName(fallback)
+		}
+	}
+}
+
+func (t *templateResolutionTracker) error() error {
+	if len(t.names) == 0 {
+		if t.lastErr != nil {
+			return t.lastErr
+		}
+		return nil
+	}
+
+	names := uniqueStringsPreserveOrder(t.names)
+	tried := uniqueStringsPreserveOrder(t.tried)
+
+	if len(names) == 1 && t.lastErr != nil {
+		return t.lastErr
+	}
+
+	return NewTemplatesNotFound(names, tried, t.lastErr)
+}
+
+func (env *Environment) resolveTemplateCandidates(candidates []interface{}, tracker *templateResolutionTracker) (*Template, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	for _, candidate := range candidates {
+		tmpl, err := env.tryTemplateCandidate(candidate, tracker)
+		if err != nil {
+			return nil, err
+		}
+		if tmpl != nil {
+			return tmpl, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (env *Environment) tryTemplateCandidate(candidate interface{}, tracker *templateResolutionTracker) (*Template, error) {
+	switch value := candidate.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		tmpl, err := env.LoadTemplate(value)
+		if err == nil {
+			return tmpl, nil
+		}
+		if isTemplateNotFoundError(err) {
+			tracker.recordNotFound(err, value)
+			return nil, nil
+		}
+		return nil, err
+	case []string:
+		tmpl, err := env.SelectTemplate(value)
+		if err == nil {
+			return tmpl, nil
+		}
+		if isTemplateNotFoundError(err) {
+			tracker.recordNotFound(err, "")
+			return nil, nil
+		}
+		return nil, err
+	case []interface{}:
+		return env.resolveTemplateCandidates(value, tracker)
+	case []*Template:
+		for _, tmpl := range value {
+			if tmpl != nil {
+				return tmpl, nil
+			}
+		}
+		return nil, nil
+	case []Template:
+		for _, tmpl := range value {
+			copy := tmpl
+			return &copy, nil
+		}
+		return nil, nil
+	case *Template:
+		if value == nil {
+			return nil, nil
+		}
+		return value, nil
+	case Template:
+		copy := value
+		return &copy, nil
+	default:
+		return nil, NewError(ErrorTypeTemplate,
+			fmt.Sprintf("template list must contain strings or *Template, got %T", candidate),
+			nodes.Position{}, nil)
+	}
+}
+
+func uniqueStringsPreserveOrder(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+
+	return result
 }
 
 // FromString parses the provided template source using the environment's
