@@ -47,7 +47,7 @@
 - File system and map loaders honour multi-path search order, provide `TemplateModTime`, and surface `TemplateNotFound` with tried paths (`runtime/environment.go`).
 - Template caching, macro registries, extension registration, autoescape selection, and sandbox-aware execution line up with Python's API surface (`runtime/environment.go`, `runtime/template.go`, `runtime/sandbox.go`).
 
-**Remaining gaps**: bytecode cache APIs, streaming writers, and async rendering modes are not yet implemented.
+**Remaining gaps**: streaming writers and async rendering modes are not yet implemented.
 
 ## Error Handling & Security
 
