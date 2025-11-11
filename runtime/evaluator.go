@@ -2183,11 +2183,6 @@ func (e *Evaluator) visitGetattr(node *nodes.Getattr) interface{} {
 		return err
 	}
 
-	if node.Ctx == nodes.CtxStore {
-		// Assignment to attribute
-		return NewError(ErrorTypeTemplate, "attribute assignment not yet implemented", node.GetPosition(), node)
-	}
-
 	value, err := e.ctx.ResolveAttribute(obj, node.Attr)
 	if err != nil {
 		return err
@@ -2205,11 +2200,6 @@ func (e *Evaluator) visitGetitem(node *nodes.Getitem) interface{} {
 	index := e.Evaluate(node.Arg)
 	if err, ok := index.(error); ok {
 		return err
-	}
-
-	if node.Ctx == nodes.CtxStore {
-		// Assignment to index
-		return NewError(ErrorTypeTemplate, "index assignment not yet implemented", node.GetPosition(), node)
 	}
 
 	value, err := e.ctx.ResolveIndex(obj, index)

@@ -137,3 +137,47 @@ func TestSetIndexOutOfRange(t *testing.T) {
 		t.Fatalf("expected index error, got %v", err)
 	}
 }
+
+func TestSetNestedAttribute(t *testing.T) {
+	env := NewEnvironment()
+	templates := map[string]string{
+		"tmpl.html": `{% set data = {'user': {'name': 'Initial'}} %}{% set data.user.name = 'Updated' %}{{ data.user.name }}`,
+	}
+	env.SetLoader(NewMapLoader(templates))
+
+	tmpl, err := env.ParseFile("tmpl.html")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	if strings.TrimSpace(result) != "Updated" {
+		t.Fatalf("expected nested attribute assignment to update value, got %q", strings.TrimSpace(result))
+	}
+}
+
+func TestSetNestedIndexAndAttribute(t *testing.T) {
+	env := NewEnvironment()
+	templates := map[string]string{
+		"tmpl.html": `{% set data = {'users': [{'name': 'Ada'}, {'name': 'Lin'}]} %}{% set data.users[0].name = 'Grace' %}{{ data.users[0].name }}`,
+	}
+	env.SetLoader(NewMapLoader(templates))
+
+	tmpl, err := env.ParseFile("tmpl.html")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	result, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	if strings.TrimSpace(result) != "Grace" {
+		t.Fatalf("expected nested index assignment to update value, got %q", strings.TrimSpace(result))
+	}
+}
