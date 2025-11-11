@@ -2,6 +2,9 @@ package gojinja2
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +84,80 @@ func TestExecuteConvenienceFunctions(t *testing.T) {
 	}
 	if buf.String() != "42!" {
 		t.Fatalf("expected '42!', got %q", buf.String())
+	}
+}
+
+type testStreamAwaitable struct {
+	value string
+}
+
+func (a testStreamAwaitable) Await(ctx *Context) (interface{}, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("missing context")
+	}
+	return a.value, nil
+}
+
+var _ Awaitable = (*testStreamAwaitable)(nil)
+
+func TestStreamingConvenienceFunctions(t *testing.T) {
+	stream, err := Generate("Hello {{ name }}", map[string]interface{}{"name": "Stream"})
+	if err != nil {
+		t.Fatalf("Generate error: %v", err)
+	}
+
+	var builder strings.Builder
+	for {
+		chunk, err := stream.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("stream iteration error: %v", err)
+		}
+		builder.WriteString(chunk)
+	}
+
+	if result := builder.String(); result != "Hello Stream" {
+		t.Fatalf("unexpected stream output: %q", result)
+	}
+
+	env := NewEnvironment()
+	env.SetKeepTrailingNewline(true)
+
+	streamWithEnv, err := GenerateWithEnvironment(env, "value\n", nil)
+	if err != nil {
+		t.Fatalf("GenerateWithEnvironment error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	written, err := streamWithEnv.WriteTo(&buf)
+	if err != nil {
+		t.Fatalf("WriteTo error: %v", err)
+	}
+	if written != int64(len("value\n")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("value\n"), written)
+	}
+	if buf.String() != "value\n" {
+		t.Fatalf("expected trailing newline to be preserved, got %q", buf.String())
+	}
+
+	asyncEnv := NewEnvironment()
+	asyncEnv.SetEnableAsync(true)
+
+	asyncStream, err := GenerateWithEnvironment(asyncEnv, "{{ await value }}", map[string]interface{}{
+		"value": &testStreamAwaitable{value: "done"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateWithEnvironment async error: %v", err)
+	}
+
+	awaited, err := asyncStream.Collect()
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+	if strings.TrimSpace(awaited) != "done" {
+		t.Fatalf("expected awaited result 'done', got %q", strings.TrimSpace(awaited))
 	}
 }
 
