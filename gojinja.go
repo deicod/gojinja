@@ -224,6 +224,18 @@ func GenerateWithEnvironment(env *Environment, templateString string, context ma
 	return runtime.GenerateWithEnvironment(env, templateString, context)
 }
 
+// GenerateToWriter renders a template string and streams the result to the
+// provided writer using the default environment.
+func GenerateToWriter(templateString string, context map[string]interface{}, writer io.Writer) (int64, error) {
+	return runtime.GenerateToWriter(templateString, context, writer)
+}
+
+// GenerateToWriterWithEnvironment renders a template string using the provided
+// environment and streams the output into the supplied writer.
+func GenerateToWriterWithEnvironment(env *Environment, templateString string, context map[string]interface{}, writer io.Writer) (int64, error) {
+	return runtime.GenerateToWriterWithEnvironment(env, templateString, context, writer)
+}
+
 // Node access for AST manipulation
 
 // Node represents an AST node

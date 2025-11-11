@@ -122,6 +122,16 @@ func TestStreamingConvenienceFunctions(t *testing.T) {
 		t.Fatalf("unexpected stream output: %q", result)
 	}
 
+	var directWriter bytes.Buffer
+	if written, err := GenerateToWriter("Hello {{ who }}", map[string]interface{}{"who": "Writer"}, &directWriter); err != nil {
+		t.Fatalf("GenerateToWriter error: %v", err)
+	} else if written != int64(len("Hello Writer")) {
+		t.Fatalf("unexpected number of bytes written: %d", written)
+	}
+	if directWriter.String() != "Hello Writer" {
+		t.Fatalf("GenerateToWriter produced %q", directWriter.String())
+	}
+
 	env := NewEnvironment()
 	env.SetKeepTrailingNewline(true)
 
@@ -140,6 +150,16 @@ func TestStreamingConvenienceFunctions(t *testing.T) {
 	}
 	if buf.String() != "value\n" {
 		t.Fatalf("expected trailing newline to be preserved, got %q", buf.String())
+	}
+
+	buf.Reset()
+	if written, err := GenerateToWriterWithEnvironment(env, "value\n", nil, &buf); err != nil {
+		t.Fatalf("GenerateToWriterWithEnvironment error: %v", err)
+	} else if written != int64(len("value\n")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("value\n"), written)
+	}
+	if buf.String() != "value\n" {
+		t.Fatalf("GenerateToWriterWithEnvironment preserved unexpected output: %q", buf.String())
 	}
 
 	asyncEnv := NewEnvironment()
