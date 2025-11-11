@@ -126,6 +126,44 @@ func GenerateWithEnvironment(env *Environment, templateString string, vars map[s
 	return tmpl.Generate(vars)
 }
 
+// GenerateToWriter renders a template string and writes the streamed output to
+// the provided writer. It is equivalent to calling Generate followed by WriteTo
+// and mirrors Jinja2's generator convenience helpers.
+func GenerateToWriter(templateString string, vars map[string]interface{}, writer io.Writer) (int64, error) {
+	if writer == nil {
+		return 0, NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	stream, err := Generate(templateString, vars)
+	if err != nil {
+		return 0, err
+	}
+	return stream.WriteTo(writer)
+}
+
+// GenerateToWriterWithEnvironment mirrors GenerateToWriter but uses the
+// provided environment for parsing and execution.
+func GenerateToWriterWithEnvironment(env *Environment, templateString string, vars map[string]interface{}, writer io.Writer) (int64, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return 0, err
+	}
+	if writer == nil {
+		return 0, NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	tmpl, err := env.ParseString(templateString, "template")
+	if err != nil {
+		return 0, err
+	}
+
+	stream, err := tmpl.Generate(vars)
+	if err != nil {
+		return 0, err
+	}
+
+	return stream.WriteTo(writer)
+}
+
 // ParseAST creates a template from an existing AST
 func ParseAST(ast *nodes.Template) (*Template, error) {
 	return ParseASTWithName(ast, "template")
