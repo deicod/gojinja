@@ -16,6 +16,13 @@ const Version = "0.1.0"
 type Template = runtime.Template
 type TemplateStream = runtime.TemplateStream
 
+// Awaitable represents a value that can be awaited inside async-enabled
+// templates.
+type Awaitable = runtime.Awaitable
+
+// SimpleAwaitable mirrors Awaitable without requiring a rendering context.
+type SimpleAwaitable = runtime.SimpleAwaitable
+
 // Environment represents the Jinja2 environment
 type Environment = runtime.Environment
 
