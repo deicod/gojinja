@@ -2156,6 +2156,39 @@ func (env *Environment) ParseFile(name string) (*Template, error) {
 	return env.LoadTemplate(name)
 }
 
+// RenderTemplate loads the named template and renders it with the provided
+// context, returning the rendered output as a string. This mirrors Jinja2's
+// environment helper for quickly rendering loader-backed templates.
+func (env *Environment) RenderTemplate(name string, vars map[string]interface{}) (string, error) {
+	tmpl, err := env.GetTemplate(name)
+	if err != nil {
+		return "", err
+	}
+	return tmpl.ExecuteToString(vars)
+}
+
+// RenderTemplateToWriter loads the named template and renders it into the
+// supplied writer. This provides a convenient way to stream template output
+// without manually retrieving the template first.
+func (env *Environment) RenderTemplateToWriter(name string, vars map[string]interface{}, writer io.Writer) error {
+	tmpl, err := env.GetTemplate(name)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(vars, writer)
+}
+
+// Generate loads the named template and returns a TemplateStream that yields
+// rendered fragments as they are produced. The stream honours the
+// environment's trailing newline policy, matching Template.Generate.
+func (env *Environment) Generate(name string, vars map[string]interface{}) (*TemplateStream, error) {
+	tmpl, err := env.GetTemplate(name)
+	if err != nil {
+		return nil, err
+	}
+	return tmpl.Generate(vars)
+}
+
 // SetCacheTTL sets the cache time-to-live
 func (env *Environment) SetCacheTTL(ttl time.Duration) {
 	env.mu.Lock()
