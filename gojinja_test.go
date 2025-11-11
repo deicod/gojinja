@@ -324,6 +324,43 @@ func TestEnvironmentHelperFunctions(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRenderingHelpers(t *testing.T) {
+	env := NewEnvironment()
+	env.SetKeepTrailingNewline(true)
+	env.SetLoader(NewMapLoader(map[string]string{
+		"hello.html": "Hello {{ name }}!\n",
+	}))
+
+	rendered, err := env.RenderTemplate("hello.html", map[string]interface{}{"name": "Parity"})
+	if err != nil {
+		t.Fatalf("RenderTemplate error: %v", err)
+	}
+	if strings.TrimSpace(rendered) != "Hello Parity!" {
+		t.Fatalf("unexpected RenderTemplate output: %q", rendered)
+	}
+
+	var buf bytes.Buffer
+	if err := env.RenderTemplateToWriter("hello.html", map[string]interface{}{"name": "Writer"}, &buf); err != nil {
+		t.Fatalf("RenderTemplateToWriter error: %v", err)
+	}
+	if strings.TrimSpace(buf.String()) != "Hello Writer!" {
+		t.Fatalf("unexpected RenderTemplateToWriter output: %q", buf.String())
+	}
+
+	stream, err := env.Generate("hello.html", map[string]interface{}{"name": "Stream"})
+	if err != nil {
+		t.Fatalf("Generate error: %v", err)
+	}
+
+	collected, err := stream.Collect()
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+	if collected != "Hello Stream!\n" {
+		t.Fatalf("unexpected collected output: %q", collected)
+	}
+}
+
 func TestMakeModuleWithContext(t *testing.T) {
 	env := NewEnvironment()
 	tmpl, err := env.ParseString(`
