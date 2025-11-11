@@ -2164,7 +2164,7 @@ func (env *Environment) RenderTemplate(name string, vars map[string]interface{})
 	if err != nil {
 		return "", err
 	}
-	return tmpl.ExecuteToString(vars)
+	return env.ExecuteToString(tmpl, vars)
 }
 
 // RenderTemplateToWriter loads the named template and renders it into the
@@ -2175,7 +2175,7 @@ func (env *Environment) RenderTemplateToWriter(name string, vars map[string]inte
 	if err != nil {
 		return err
 	}
-	return tmpl.Execute(vars, writer)
+	return env.ExecuteTemplate(tmpl, vars, writer)
 }
 
 // Generate loads the named template and returns a TemplateStream that yields
@@ -2186,7 +2186,14 @@ func (env *Environment) Generate(name string, vars map[string]interface{}) (*Tem
 	if err != nil {
 		return nil, err
 	}
-	return tmpl.Generate(vars)
+	stream := newTemplateStream(!env.ShouldKeepTrailingNewline())
+
+	go func() {
+		err := env.ExecuteTemplate(tmpl, vars, &streamWriter{stream: stream})
+		stream.close(err)
+	}()
+
+	return stream, nil
 }
 
 // SetCacheTTL sets the cache time-to-live
