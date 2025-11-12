@@ -103,6 +103,41 @@ func Execute(templateString string, vars map[string]interface{}, writer io.Write
 	return template.Execute(vars, writer)
 }
 
+// ExecuteToStringWithEnvironment mirrors ExecuteToString but renders using the
+// provided environment. This allows callers to honour environment-specific
+// settings such as autoescape policies, newline trimming, async support, and
+// registered extensions while still using the convenience helper.
+func ExecuteToStringWithEnvironment(env *Environment, templateString string, vars map[string]interface{}) (string, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return "", err
+	}
+
+	tmpl, err := env.ParseString(templateString, "template")
+	if err != nil {
+		return "", err
+	}
+	return tmpl.ExecuteToString(vars)
+}
+
+// ExecuteWithEnvironment renders a template string using the provided
+// environment and writes the output to the supplied writer. The helper mirrors
+// Execute while ensuring the environment's configuration (such as
+// keep_trailing_newline or sandboxing) is respected.
+func ExecuteWithEnvironment(env *Environment, templateString string, vars map[string]interface{}, writer io.Writer) error {
+	if err := ensureEnvironment(env); err != nil {
+		return err
+	}
+	if writer == nil {
+		return NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	tmpl, err := env.ParseString(templateString, "template")
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(vars, writer)
+}
+
 // Generate parses a template string and returns a streaming renderer that
 // yields fragments as they are produced during execution.
 func Generate(templateString string, vars map[string]interface{}) (*TemplateStream, error) {

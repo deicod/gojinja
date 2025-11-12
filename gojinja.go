@@ -159,6 +159,16 @@ func Execute(templateString string, vars map[string]interface{}, writer io.Write
 	return runtime.Execute(templateString, vars, writer)
 }
 
+// ExecuteToStringWithEnvironment renders a template string to a string using the provided environment.
+func ExecuteToStringWithEnvironment(env *Environment, templateString string, vars map[string]interface{}) (string, error) {
+	return runtime.ExecuteToStringWithEnvironment(env, templateString, vars)
+}
+
+// ExecuteWithEnvironment renders a template string to the provided writer using the supplied environment.
+func ExecuteWithEnvironment(env *Environment, templateString string, vars map[string]interface{}, writer io.Writer) error {
+	return runtime.ExecuteWithEnvironment(env, templateString, vars, writer)
+}
+
 // ParseAST creates a template from an AST using the default environment.
 func ParseAST(ast *nodes.Template) (*Template, error) {
 	return runtime.ParseAST(ast)
