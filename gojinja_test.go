@@ -87,6 +87,35 @@ func TestExecuteConvenienceFunctions(t *testing.T) {
 	}
 }
 
+func TestExecuteWithEnvironmentConvenienceFunctions(t *testing.T) {
+	env := NewEnvironment()
+	env.SetKeepTrailingNewline(true)
+
+	rendered, err := ExecuteToStringWithEnvironment(env, "value\n", nil)
+	if err != nil {
+		t.Fatalf("ExecuteToStringWithEnvironment error: %v", err)
+	}
+	if rendered != "value\n" {
+		t.Fatalf("expected trailing newline to be preserved, got %q", rendered)
+	}
+
+	var buf bytes.Buffer
+	if err := ExecuteWithEnvironment(env, "{{ item }}\n", map[string]interface{}{"item": "Go"}, &buf); err != nil {
+		t.Fatalf("ExecuteWithEnvironment error: %v", err)
+	}
+	if buf.String() != "Go\n" {
+		t.Fatalf("unexpected ExecuteWithEnvironment output: %q", buf.String())
+	}
+
+	if _, err := ExecuteToStringWithEnvironment(nil, "", nil); err == nil {
+		t.Fatalf("expected ExecuteToStringWithEnvironment to error with nil environment")
+	}
+
+	if err := ExecuteWithEnvironment(env, "value", nil, nil); err == nil {
+		t.Fatalf("expected ExecuteWithEnvironment to error with nil writer")
+	}
+}
+
 type testStreamAwaitable struct {
 	value string
 }
