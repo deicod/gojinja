@@ -38,11 +38,66 @@ type FileSystemLoader = runtime.FileSystemLoader
 // MapLoader loads templates from an in-memory map
 type MapLoader = runtime.MapLoader
 
+// SandboxEnvironment represents an environment protected by a security policy.
+type SandboxEnvironment = runtime.SandboxEnvironment
+
 // SecurityManager manages security policies
 type SecurityManager = runtime.SecurityManager
 
 // SecurityContext manages security during template execution
 type SecurityContext = runtime.SecurityContext
+
+// SecurityPolicy defines the restrictions enforced during template execution.
+type SecurityPolicy = runtime.SecurityPolicy
+
+// SecurityPolicyBuilder provides a fluent builder for constructing security policies.
+type SecurityPolicyBuilder = runtime.SecurityPolicyBuilder
+
+// SecurityLevel represents the enforcement level applied by a policy.
+type SecurityLevel = runtime.SecurityLevel
+
+const (
+	// SecurityLevelDevelopment mirrors runtime.SecurityLevelDevelopment.
+	SecurityLevelDevelopment SecurityLevel = runtime.SecurityLevelDevelopment
+	// SecurityLevelStaging mirrors runtime.SecurityLevelStaging.
+	SecurityLevelStaging SecurityLevel = runtime.SecurityLevelStaging
+	// SecurityLevelProduction mirrors runtime.SecurityLevelProduction.
+	SecurityLevelProduction SecurityLevel = runtime.SecurityLevelProduction
+	// SecurityLevelRestricted mirrors runtime.SecurityLevelRestricted.
+	SecurityLevelRestricted SecurityLevel = runtime.SecurityLevelRestricted
+)
+
+// SecurityViolation captures a policy violation that occurred during execution.
+type SecurityViolation = runtime.SecurityViolation
+
+// SecurityViolationType enumerates the classes of violations tracked by the policy.
+type SecurityViolationType = runtime.SecurityViolationType
+
+const (
+	// ViolationTypeFilterAccess mirrors runtime.ViolationTypeFilterAccess.
+	ViolationTypeFilterAccess SecurityViolationType = runtime.ViolationTypeFilterAccess
+	// ViolationTypeFunctionAccess mirrors runtime.ViolationTypeFunctionAccess.
+	ViolationTypeFunctionAccess SecurityViolationType = runtime.ViolationTypeFunctionAccess
+	// ViolationTypeAttributeAccess mirrors runtime.ViolationTypeAttributeAccess.
+	ViolationTypeAttributeAccess SecurityViolationType = runtime.ViolationTypeAttributeAccess
+	// ViolationTypeMethodCall mirrors runtime.ViolationTypeMethodCall.
+	ViolationTypeMethodCall SecurityViolationType = runtime.ViolationTypeMethodCall
+	// ViolationTypeTemplateAccess mirrors runtime.ViolationTypeTemplateAccess.
+	ViolationTypeTemplateAccess SecurityViolationType = runtime.ViolationTypeTemplateAccess
+	// ViolationTypeRecursionLimit mirrors runtime.ViolationTypeRecursionLimit.
+	ViolationTypeRecursionLimit SecurityViolationType = runtime.ViolationTypeRecursionLimit
+	// ViolationTypeExecutionTimeout mirrors runtime.ViolationTypeExecutionTimeout.
+	ViolationTypeExecutionTimeout SecurityViolationType = runtime.ViolationTypeExecutionTimeout
+	// ViolationTypeMemoryLimit mirrors runtime.ViolationTypeMemoryLimit.
+	ViolationTypeMemoryLimit SecurityViolationType = runtime.ViolationTypeMemoryLimit
+	// ViolationTypeRestrictedContent mirrors runtime.ViolationTypeRestrictedContent.
+	ViolationTypeRestrictedContent SecurityViolationType = runtime.ViolationTypeRestrictedContent
+	// ViolationTypeInputValidation mirrors runtime.ViolationTypeInputValidation.
+	ViolationTypeInputValidation SecurityViolationType = runtime.ViolationTypeInputValidation
+)
+
+// SecurityAuditEntry represents an audit log entry recorded by the security manager.
+type SecurityAuditEntry = runtime.SecurityAuditEntry
 
 // Macro represents a compiled Jinja2 macro
 type Macro = runtime.Macro
@@ -69,17 +124,17 @@ func NewMapLoader(templates map[string]string) *MapLoader {
 }
 
 // NewSecureEnvironment creates a new environment with default secure policy
-func NewSecureEnvironment() *runtime.SandboxEnvironment {
+func NewSecureEnvironment() *SandboxEnvironment {
 	return runtime.NewSecureEnvironment()
 }
 
 // NewDevelopmentEnvironment creates a new environment with development policy
-func NewDevelopmentEnvironment() *runtime.SandboxEnvironment {
+func NewDevelopmentEnvironment() *SandboxEnvironment {
 	return runtime.NewDevelopmentEnvironment()
 }
 
 // NewRestrictedEnvironment creates a new environment with restricted policy
-func NewRestrictedEnvironment() *runtime.SandboxEnvironment {
+func NewRestrictedEnvironment() *SandboxEnvironment {
 	return runtime.NewRestrictedEnvironment()
 }
 
@@ -331,4 +386,14 @@ func DevelopmentSecurityPolicy() *runtime.SecurityPolicy {
 // RestrictedSecurityPolicy returns a highly restrictive policy
 func RestrictedSecurityPolicy() *runtime.SecurityPolicy {
 	return runtime.RestrictedSecurityPolicy()
+}
+
+// NewSecurityPolicyBuilder creates a new security policy builder.
+func NewSecurityPolicyBuilder(name, description string) *SecurityPolicyBuilder {
+	return runtime.NewSecurityPolicyBuilder(name, description)
+}
+
+// AddDangerousPatterns augments a policy with predefined restricted content patterns.
+func AddDangerousPatterns(policy *SecurityPolicy) {
+	runtime.AddDangerousPatterns(policy)
 }
