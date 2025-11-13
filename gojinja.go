@@ -104,6 +104,11 @@ func ParseStringWithName(source, name string) (*Template, error) {
 	return runtime.ParseStringWithName(source, name)
 }
 
+// ParseFileWithEnvironment parses a template using the provided environment's loader.
+func ParseFileWithEnvironment(env *Environment, name string) (*Template, error) {
+	return runtime.ParseFileWithEnvironment(env, name)
+}
+
 // GetTemplate retrieves a template by name using the provided environment.
 func GetTemplate(env *Environment, name string) (*Template, error) {
 	return runtime.GetTemplate(env, name)

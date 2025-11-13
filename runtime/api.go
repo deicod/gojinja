@@ -21,6 +21,20 @@ func ParseStringWithName(templateString, name string) (*Template, error) {
 	return env.ParseString(templateString, name)
 }
 
+// ParseFileWithEnvironment parses a template by name using the provided environment's loader.
+// It mirrors Jinja2's get_template-style helpers by returning a compiled template
+// while honouring the environment configuration (loader search paths, caching,
+// sandboxing, etc.).
+func ParseFileWithEnvironment(env *Environment, name string) (*Template, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	if name == "" {
+		return nil, NewError(ErrorTypeTemplate, "template name must not be empty", nodes.Position{}, nil)
+	}
+	return env.ParseFile(name)
+}
+
 func ensureEnvironment(env *Environment) error {
 	if env == nil {
 		return NewError(ErrorTypeTemplate, "environment must not be nil", nodes.Position{}, nil)
