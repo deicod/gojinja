@@ -33,6 +33,35 @@ func TestParseFile(t *testing.T) {
 	}
 }
 
+func TestParseFileWithEnvironment(t *testing.T) {
+	env := NewEnvironment()
+	env.SetLoader(NewMapLoader(map[string]string{
+		"file.html": "Loaded {{ value }}",
+	}))
+
+	tmpl, err := ParseFileWithEnvironment(env, "file.html")
+	if err != nil {
+		t.Fatalf("ParseFileWithEnvironment error: %v", err)
+	}
+
+	rendered, err := tmpl.ExecuteToString(map[string]interface{}{"value": "template"})
+	if err != nil {
+		t.Fatalf("template execution error: %v", err)
+	}
+
+	if rendered != "Loaded template" {
+		t.Fatalf("unexpected ParseFileWithEnvironment output: %q", rendered)
+	}
+
+	if _, err := ParseFileWithEnvironment(nil, "file.html"); err == nil {
+		t.Fatalf("expected ParseFileWithEnvironment to error with nil environment")
+	}
+
+	if _, err := ParseFileWithEnvironment(env, ""); err == nil {
+		t.Fatalf("expected ParseFileWithEnvironment to error with empty template name")
+	}
+}
+
 func TestFloorDivisionOperator(t *testing.T) {
 	tmpl, err := ParseString("{{ 7 // 2 }}")
 	if err != nil {
