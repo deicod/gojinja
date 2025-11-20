@@ -54,3 +54,58 @@ func TestStrictUndefinedRaisesError(t *testing.T) {
 		t.Fatalf("expected strict undefined error")
 	}
 }
+
+func TestMissingAttributeResolvesToUndefined(t *testing.T) {
+	env := NewEnvironment()
+	tmpl, err := env.ParseString(`{{ user.name|default('anon') }}`, "attr_missing")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	if output != "anon" {
+		t.Fatalf("expected default fallback, got %q", output)
+	}
+}
+
+func TestChainableUndefinedPropagatesThroughLookups(t *testing.T) {
+	env := NewEnvironment()
+	env.SetUndefinedFactory(func(name string) undefinedType {
+		return ChainableUndefined{name: name}
+	})
+
+	tmpl, err := env.ParseString(`{{ user.missing.attr|default('fallback') }}`, "chainable")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(nil)
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	if output != "fallback" {
+		t.Fatalf("expected chainable undefined to allow default, got %q", output)
+	}
+}
+
+func TestMissingIndexReturnsUndefined(t *testing.T) {
+	env := NewEnvironment()
+	tmpl, err := env.ParseString(`{{ data['missing']|default('none') }}`, "index_missing")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(map[string]interface{}{"data": map[string]interface{}{"present": "value"}})
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	if output != "none" {
+		t.Fatalf("expected default for missing index, got %q", output)
+	}
+}

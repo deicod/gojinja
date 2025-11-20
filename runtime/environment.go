@@ -881,7 +881,11 @@ func (env *Environment) escape(value interface{}) string {
 // resolveValue resolves a value using reflection
 func (env *Environment) resolveValue(value interface{}, attr string) (interface{}, error) {
 	if value == nil {
-		return nil, NewUndefinedError(attr, nodes.Position{}, nil)
+		undef := env.newUndefined(attr)
+		if isStrictUndefined(undef) {
+			return nil, NewUndefinedError(attr, nodes.Position{}, nil)
+		}
+		return undef, nil
 	}
 
 	// Handle LoopContext specially
@@ -1025,7 +1029,11 @@ func (env *Environment) resolveValue(value interface{}, attr string) (interface{
 // resolveIndex resolves a value by index
 func (env *Environment) resolveIndex(value interface{}, index interface{}) (interface{}, error) {
 	if value == nil {
-		return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+		undef := env.newUndefined(fmt.Sprintf("%v", index))
+		if isStrictUndefined(undef) {
+			return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+		}
+		return undef, nil
 	}
 
 	val := reflect.ValueOf(value)
@@ -1033,7 +1041,11 @@ func (env *Environment) resolveIndex(value interface{}, index interface{}) (inte
 	// Handle pointers
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
-			return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+			undef := env.newUndefined(fmt.Sprintf("%v", index))
+			if isStrictUndefined(undef) {
+				return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+			}
+			return undef, nil
 		}
 		val = val.Elem()
 	}
@@ -1051,6 +1063,11 @@ func (env *Environment) resolveIndex(value interface{}, index interface{}) (inte
 		if result := val.MapIndex(convertedKey); result.IsValid() {
 			return result.Interface(), nil
 		}
+		undef := env.newUndefined(fmt.Sprintf("%v", index))
+		if isStrictUndefined(undef) {
+			return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+		}
+		return undef, nil
 	case reflect.Slice, reflect.Array:
 		// Convert index to int
 		var idx int
