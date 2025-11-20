@@ -399,6 +399,34 @@ func TestParser_AwaitExpressions(t *testing.T) {
 	}
 }
 
+func TestParser_AwaitIdentifierWithAsyncDisabled(t *testing.T) {
+	template := `{{ await|upper }}`
+
+	tmpl, err := ParseTemplateWithEnv(&Environment{}, template, "test", "test.html")
+	if err != nil {
+		t.Fatalf("unexpected error parsing await identifier: %v", err)
+	}
+
+	if len(tmpl.Body) != 1 {
+		t.Fatalf("expected single body node, got %d", len(tmpl.Body))
+	}
+
+	output, ok := tmpl.Body[0].(*nodes.Output)
+	if !ok {
+		t.Fatalf("expected Output node, got %T", tmpl.Body[0])
+	}
+
+	filterExpr, ok := output.Nodes[0].(*nodes.Filter)
+	if !ok {
+		t.Fatalf("expected Filter expression, got %T", output.Nodes[0])
+	}
+
+	name, ok := filterExpr.Node.(*nodes.Name)
+	if !ok || name.Name != "await" {
+		t.Fatalf("expected await identifier to parse as Name, got %T with name %q", filterExpr.Node, name.Name)
+	}
+}
+
 func TestParser_MacroVarArgs(t *testing.T) {
 	env := &Environment{}
 

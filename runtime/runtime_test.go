@@ -785,6 +785,24 @@ func TestAwaitExpressions(t *testing.T) {
 	}
 }
 
+func TestAwaitIdentifierWhenAsyncDisabled(t *testing.T) {
+	env := NewEnvironment()
+
+	tmpl, err := env.ParseString(`{{ await|upper }}`, "await_identifier")
+	if err != nil {
+		t.Fatalf("failed to parse template using await identifier: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(map[string]interface{}{"await": "ready"})
+	if err != nil {
+		t.Fatalf("failed to execute await identifier template: %v", err)
+	}
+
+	if strings.TrimSpace(output) != "READY" {
+		t.Fatalf("expected await identifier to render as variable, got %q", strings.TrimSpace(output))
+	}
+}
+
 func TestAutoAwaitLookups(t *testing.T) {
 	env := NewEnvironment()
 	env.SetEnableAsync(true)
