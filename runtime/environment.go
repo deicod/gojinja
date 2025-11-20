@@ -2213,6 +2213,22 @@ func (env *Environment) Generate(name string, vars map[string]interface{}) (*Tem
 	return stream, nil
 }
 
+// GenerateToWriter streams the named template directly into the provided
+// writer. It mirrors Generate followed by WriteTo while honouring the
+// environment's trailing newline configuration.
+func (env *Environment) GenerateToWriter(name string, vars map[string]interface{}, writer io.Writer) (int64, error) {
+	if writer == nil {
+		return 0, NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	stream, err := env.Generate(name, vars)
+	if err != nil {
+		return 0, err
+	}
+
+	return stream.WriteTo(writer)
+}
+
 // SetCacheTTL sets the cache time-to-live
 func (env *Environment) SetCacheTTL(ttl time.Duration) {
 	env.mu.Lock()
