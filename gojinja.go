@@ -56,6 +56,15 @@ type SecurityPolicyBuilder = runtime.SecurityPolicyBuilder
 // SecurityLevel represents the enforcement level applied by a policy.
 type SecurityLevel = runtime.SecurityLevel
 
+// BytecodeArtifact represents a serialized template artifact stored in a bytecode cache.
+type BytecodeArtifact = runtime.BytecodeArtifact
+
+// BytecodeCache mirrors Jinja2's bytecode cache abstraction for persisting compiled templates.
+type BytecodeCache = runtime.BytecodeCache
+
+// MemoryBytecodeCache provides an in-memory bytecode cache implementation that mirrors Jinja2's default cache.
+type MemoryBytecodeCache = runtime.MemoryBytecodeCache
+
 const (
 	// SecurityLevelDevelopment mirrors runtime.SecurityLevelDevelopment.
 	SecurityLevelDevelopment SecurityLevel = runtime.SecurityLevelDevelopment
@@ -396,4 +405,9 @@ func NewSecurityPolicyBuilder(name, description string) *SecurityPolicyBuilder {
 // AddDangerousPatterns augments a policy with predefined restricted content patterns.
 func AddDangerousPatterns(policy *SecurityPolicy) {
 	runtime.AddDangerousPatterns(policy)
+}
+
+// NewMemoryBytecodeCache creates an empty in-memory bytecode cache implementation.
+func NewMemoryBytecodeCache() *MemoryBytecodeCache {
+	return runtime.NewMemoryBytecodeCache()
 }
