@@ -82,3 +82,28 @@ func TestEnvironmentGenerateAPIHelpers(t *testing.T) {
 		t.Fatalf("unexpected writer output: %q", buf.String())
 	}
 }
+
+func TestEnvironmentGenerateToWriter(t *testing.T) {
+	env := NewEnvironment()
+	env.SetKeepTrailingNewline(true)
+	env.SetLoader(NewMapLoader(map[string]string{
+		"stream.txt": "Chunk {{ value }}\n",
+	}))
+
+	var buf bytes.Buffer
+	written, err := env.GenerateToWriter("stream.txt", map[string]interface{}{"value": "42"}, &buf)
+	if err != nil {
+		t.Fatalf("GenerateToWriter error: %v", err)
+	}
+
+	if written != int64(len("Chunk 42\n")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("Chunk 42\n"), written)
+	}
+	if buf.String() != "Chunk 42\n" {
+		t.Fatalf("unexpected GenerateToWriter output: %q", buf.String())
+	}
+
+	if _, err := env.GenerateToWriter("stream.txt", nil, nil); err == nil {
+		t.Fatalf("expected GenerateToWriter to error with nil writer")
+	}
+}
