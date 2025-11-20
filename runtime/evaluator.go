@@ -1810,6 +1810,7 @@ func (e *Evaluator) visitName(node *nodes.Name) interface{} {
 		return err
 	}
 
+	originalValue := value
 	value = e.autoAwaitValue(value, node)
 	if awaitedErr, ok := value.(error); ok {
 		return awaitedErr
@@ -1817,6 +1818,9 @@ func (e *Evaluator) visitName(node *nodes.Name) interface{} {
 
 	// If not found, try to resolve as namespaced macro
 	if value == nil {
+		if originalValue != nil {
+			return nil
+		}
 		if node.Name == "caller" {
 			if macro := e.ctx.CurrentMacro(); macro != nil && macro.callerFunc != nil {
 				return macro.callerFunc

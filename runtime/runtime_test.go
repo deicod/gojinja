@@ -810,6 +810,25 @@ func TestAutoAwaitLookups(t *testing.T) {
 	}
 }
 
+func TestAutoAwaitNilLookupResult(t *testing.T) {
+	env := NewEnvironment()
+	env.SetEnableAsync(true)
+
+	tmpl, err := env.ParseString(`{{ maybe }}`, "auto_await_nil")
+	if err != nil {
+		t.Fatalf("failed to parse auto-await nil template: %v", err)
+	}
+
+	output, err := tmpl.ExecuteToString(map[string]interface{}{"maybe": testAwaitable{result: nil}})
+	if err != nil {
+		t.Fatalf("failed to execute auto-await nil template: %v", err)
+	}
+
+	if strings.TrimSpace(output) != "" {
+		t.Fatalf("expected awaited nil lookup to render empty string, got %q", strings.TrimSpace(output))
+	}
+}
+
 func TestAsyncFiltersTestsAndGlobals(t *testing.T) {
 	env := NewEnvironment()
 	env.SetEnableAsync(true)
