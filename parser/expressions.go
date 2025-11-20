@@ -339,10 +339,7 @@ func (p *Parser) parseUnary(withFilter bool) (nodes.Expr, error) {
 
 	var node nodes.Expr
 
-	if token.Type == lexer.TokenName && token.Value == "await" {
-		if p.environment == nil || !p.environment.EnableAsync {
-			return nil, p.Fail("encountered 'await' but async support is disabled; enable 'enable_async' to use await expressions", token.Line, &TemplateSyntaxError{})
-		}
+	if token.Type == lexer.TokenName && token.Value == "await" && p.environment != nil && p.environment.EnableAsync {
 		p.stream.Next()
 		expr, err := p.parseUnary(false)
 		if err != nil {
@@ -352,6 +349,8 @@ func (p *Parser) parseUnary(withFilter bool) (nodes.Expr, error) {
 		awaitNode := &nodes.Await{Node: expr}
 		awaitNode.SetPosition(nodes.NewPosition(lineno, 0))
 		node = awaitNode
+	} else if token.Type == lexer.TokenName && token.Value == "await" && p.shouldTreatAwaitAsKeyword() {
+		return nil, p.Fail("encountered 'await' but async support is disabled; enable 'enable_async' to use await expressions", token.Line, &TemplateSyntaxError{})
 	} else if token.Type == lexer.TokenSub {
 		p.stream.Next()
 		expr, err := p.parseUnary(false)
@@ -391,6 +390,22 @@ func (p *Parser) parseUnary(withFilter bool) (nodes.Expr, error) {
 	}
 
 	return node, nil
+}
+
+func (p *Parser) shouldTreatAwaitAsKeyword() bool {
+	if p.environment != nil && p.environment.EnableAsync {
+		return false
+	}
+
+	next := p.stream.PeekN(1)
+	switch next.Type {
+	case lexer.TokenName, lexer.TokenString, lexer.TokenNumber,
+		lexer.TokenLeftParen, lexer.TokenLeftBracket, lexer.TokenLeftCurly,
+		lexer.TokenAdd, lexer.TokenSub, lexer.TokenNot:
+		return true
+	default:
+		return false
+	}
 }
 
 // ParsePrimary parses primary expressions (names, literals, parentheses)
