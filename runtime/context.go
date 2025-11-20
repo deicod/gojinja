@@ -505,7 +505,19 @@ func (ctx *Context) Resolve(name string) (interface{}, error) {
 // ResolveAttribute resolves an attribute access
 func (ctx *Context) ResolveAttribute(obj interface{}, attr string) (interface{}, error) {
 	if obj == nil {
+		if ctx.environment != nil {
+			if undef := ctx.environment.newUndefined(attr); !isStrictUndefined(undef) {
+				return undef, nil
+			}
+		}
 		return nil, NewUndefinedError(attr, nodes.Position{}, nil)
+	}
+
+	if undef, ok := obj.(undefinedType); ok {
+		if isStrictUndefined(undef) {
+			return nil, NewUndefinedError(attr, nodes.Position{}, nil)
+		}
+		return undef, nil
 	}
 
 	if ctx.environment != nil {
@@ -519,7 +531,19 @@ func (ctx *Context) ResolveAttribute(obj interface{}, attr string) (interface{},
 // ResolveIndex resolves an index access
 func (ctx *Context) ResolveIndex(obj interface{}, index interface{}) (interface{}, error) {
 	if obj == nil {
+		if ctx.environment != nil {
+			if undef := ctx.environment.newUndefined(fmt.Sprintf("%v", index)); !isStrictUndefined(undef) {
+				return undef, nil
+			}
+		}
 		return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+	}
+
+	if undef, ok := obj.(undefinedType); ok {
+		if isStrictUndefined(undef) {
+			return nil, NewUndefinedError(fmt.Sprintf("%v", index), nodes.Position{}, nil)
+		}
+		return undef, nil
 	}
 
 	if ctx.environment != nil {
