@@ -315,6 +315,19 @@ func GenerateToWriterWithEnvironment(env *Environment, templateString string, co
 	return runtime.GenerateToWriterWithEnvironment(env, templateString, context, writer)
 }
 
+// GenerateTemplateWithEnvironment streams a loader-backed template referenced by
+// name using the provided environment, mirroring Jinja2's environment helpers.
+func GenerateTemplateWithEnvironment(env *Environment, name string, context map[string]interface{}) (*TemplateStream, error) {
+	return runtime.GenerateTemplateWithEnvironment(env, name, context)
+}
+
+// GenerateTemplateToWriterWithEnvironment streams a named template to the
+// supplied writer using the provided environment, returning the number of bytes
+// written.
+func GenerateTemplateToWriterWithEnvironment(env *Environment, name string, context map[string]interface{}, writer io.Writer) (int64, error) {
+	return runtime.GenerateTemplateToWriterWithEnvironment(env, name, context, writer)
+}
+
 // Node access for AST manipulation
 
 // Node represents an AST node
