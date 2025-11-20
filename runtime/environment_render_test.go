@@ -49,3 +49,36 @@ func TestEnvironmentGenerateHelper(t *testing.T) {
 		t.Fatalf("unexpected stream output: %q", collected)
 	}
 }
+
+func TestEnvironmentGenerateAPIHelpers(t *testing.T) {
+	env := NewEnvironment()
+	env.SetKeepTrailingNewline(true)
+	env.SetLoader(NewMapLoader(map[string]string{
+		"api.txt": "API {{ value }}\n",
+	}))
+
+	stream, err := GenerateTemplateWithEnvironment(env, "api.txt", map[string]interface{}{"value": "stream"})
+	if err != nil {
+		t.Fatalf("GenerateTemplateWithEnvironment error: %v", err)
+	}
+
+	collected, err := stream.Collect()
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+	if collected != "API stream\n" {
+		t.Fatalf("unexpected collected output: %q", collected)
+	}
+
+	var buf bytes.Buffer
+	written, err := GenerateTemplateToWriterWithEnvironment(env, "api.txt", map[string]interface{}{"value": "writer"}, &buf)
+	if err != nil {
+		t.Fatalf("GenerateTemplateToWriterWithEnvironment error: %v", err)
+	}
+	if written != int64(len("API writer\n")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("API writer\n"), written)
+	}
+	if buf.String() != "API writer\n" {
+		t.Fatalf("unexpected writer output: %q", buf.String())
+	}
+}

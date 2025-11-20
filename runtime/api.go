@@ -423,6 +423,37 @@ func RenderTemplateToWriterWithEnvironment(env *Environment, templateString stri
 	return template.Execute(context, writer)
 }
 
+// GenerateTemplateWithEnvironment streams a loader-backed template by name using
+// the provided environment. The returned TemplateStream yields fragments as
+// they are produced, mirroring Environment.Generate while exposing a
+// convenience surface comparable to RenderTemplateWithEnvironment.
+func GenerateTemplateWithEnvironment(env *Environment, name string, vars map[string]interface{}) (*TemplateStream, error) {
+	if err := ensureEnvironment(env); err != nil {
+		return nil, err
+	}
+	if name == "" {
+		return nil, NewError(ErrorTypeTemplate, "template name must not be empty", nodes.Position{}, nil)
+	}
+
+	return env.Generate(name, vars)
+}
+
+// GenerateTemplateToWriterWithEnvironment streams a loader-backed template by
+// name to the supplied writer using the provided environment. This is a helper
+// wrapper around GenerateTemplateWithEnvironment followed by WriteTo.
+func GenerateTemplateToWriterWithEnvironment(env *Environment, name string, vars map[string]interface{}, writer io.Writer) (int64, error) {
+	if writer == nil {
+		return 0, NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	stream, err := GenerateTemplateWithEnvironment(env, name, vars)
+	if err != nil {
+		return 0, err
+	}
+
+	return stream.WriteTo(writer)
+}
+
 // BatchRenderer renders multiple templates efficiently
 type BatchRenderer struct {
 	environment *Environment
