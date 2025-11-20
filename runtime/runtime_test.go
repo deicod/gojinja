@@ -785,6 +785,31 @@ func TestAwaitExpressions(t *testing.T) {
 	}
 }
 
+func TestAutoAwaitLookups(t *testing.T) {
+	env := NewEnvironment()
+	env.SetEnableAsync(true)
+
+	tmpl, err := env.ParseString(`{{ value }}|{{ obj.field }}|{{ mapping['key'] }}`, "auto_await")
+	if err != nil {
+		t.Fatalf("failed to parse auto-await template: %v", err)
+	}
+
+	ctx := map[string]interface{}{
+		"value":   testAwaitable{result: "alpha"},
+		"obj":     map[string]interface{}{"field": testAwaitable{result: "beta"}},
+		"mapping": map[string]interface{}{"key": testAwaitable{result: "gamma"}},
+	}
+
+	output, err := tmpl.ExecuteToString(ctx)
+	if err != nil {
+		t.Fatalf("failed to execute auto-await template: %v", err)
+	}
+
+	if strings.TrimSpace(output) != "alpha|beta|gamma" {
+		t.Fatalf("expected awaited lookups, got %q", strings.TrimSpace(output))
+	}
+}
+
 func TestAsyncFiltersTestsAndGlobals(t *testing.T) {
 	env := NewEnvironment()
 	env.SetEnableAsync(true)

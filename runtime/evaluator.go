@@ -46,6 +46,7 @@ type Evaluator struct {
 	ctx            *Context
 	securityCtx    *SecurityContext
 	securityChecks bool
+	suspendAwait   bool
 }
 
 var (
@@ -1809,6 +1810,11 @@ func (e *Evaluator) visitName(node *nodes.Name) interface{} {
 		return err
 	}
 
+	value = e.autoAwaitValue(value, node)
+	if awaitedErr, ok := value.(error); ok {
+		return awaitedErr
+	}
+
 	// If not found, try to resolve as namespaced macro
 	if value == nil {
 		if node.Name == "caller" {
@@ -1939,7 +1945,10 @@ func (e *Evaluator) visitUnaryExpr(node *nodes.UnaryExpr) interface{} {
 }
 
 func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
+	previous := e.suspendAwait
+	e.suspendAwait = true
 	value := e.Evaluate(node.Node)
+	e.suspendAwait = previous
 	if err, ok := value.(error); ok {
 		return err
 	}
@@ -1960,6 +1969,12 @@ func (e *Evaluator) autoAwaitValue(value interface{}, node nodes.Node) interface
 	}
 	if err, ok := value.(error); ok {
 		return err
+	}
+	if isCallableValue(value) {
+		return value
+	}
+	if e.suspendAwait {
+		return value
 	}
 	if !e.shouldAutoAwait() {
 		return value
@@ -2188,7 +2203,12 @@ func (e *Evaluator) visitGetattr(node *nodes.Getattr) interface{} {
 		return err
 	}
 
-	return value
+	awaited := e.autoAwaitValue(value, node)
+	if awaitedErr, ok := awaited.(error); ok {
+		return awaitedErr
+	}
+
+	return awaited
 }
 
 func (e *Evaluator) visitGetitem(node *nodes.Getitem) interface{} {
@@ -2207,7 +2227,12 @@ func (e *Evaluator) visitGetitem(node *nodes.Getitem) interface{} {
 		return err
 	}
 
-	return value
+	awaited := e.autoAwaitValue(value, node)
+	if awaitedErr, ok := awaited.(error); ok {
+		return awaitedErr
+	}
+
+	return awaited
 }
 
 func (e *Evaluator) visitSlice(node *nodes.Slice) interface{} {
