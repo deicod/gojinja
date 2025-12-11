@@ -239,6 +239,39 @@ func TestStreamingConvenienceFunctions(t *testing.T) {
 	}
 }
 
+func TestGenerateFileHelpers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(path, []byte("Stream {{ value }}"), 0o644); err != nil {
+		t.Fatalf("failed to write template file: %v", err)
+	}
+
+	stream, err := GenerateFile(path, map[string]interface{}{"value": "from-file"})
+	if err != nil {
+		t.Fatalf("GenerateFile error: %v", err)
+	}
+
+	collected, err := stream.Collect()
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+	if collected != "Stream from-file" {
+		t.Fatalf("unexpected GenerateFile output: %q", collected)
+	}
+
+	var buf bytes.Buffer
+	written, err := GenerateFileToWriter(path, map[string]interface{}{"value": "writer"}, &buf)
+	if err != nil {
+		t.Fatalf("GenerateFileToWriter error: %v", err)
+	}
+	if written != int64(len("Stream writer")) {
+		t.Fatalf("expected to write %d bytes, wrote %d", len("Stream writer"), written)
+	}
+	if buf.String() != "Stream writer" {
+		t.Fatalf("GenerateFileToWriter produced unexpected output: %q", buf.String())
+	}
+}
+
 func TestTemplateChainAndBatchRenderer(t *testing.T) {
 	env := NewEnvironment()
 
