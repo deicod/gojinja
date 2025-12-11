@@ -218,6 +218,16 @@ func ParseFile(filename string) (*Template, error) {
 	return tmpl, nil
 }
 
+// GenerateFile renders a template from disk as a stream using a filesystem-backed environment.
+func GenerateFile(filename string, context map[string]interface{}) (*TemplateStream, error) {
+	return runtime.GenerateFile(filename, context)
+}
+
+// GenerateFileToWriter streams a template from disk into the provided writer, returning the bytes written.
+func GenerateFileToWriter(filename string, context map[string]interface{}, writer io.Writer) (int64, error) {
+	return runtime.GenerateFileToWriter(filename, context, writer)
+}
+
 // ExecuteToString parses and renders a template string using a default environment.
 func ExecuteToString(templateString string, vars map[string]interface{}) (string, error) {
 	return runtime.ExecuteToString(templateString, vars)

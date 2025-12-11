@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/deicod/gojinja/nodes"
 	"github.com/deicod/gojinja/parser"
@@ -175,6 +176,30 @@ func GenerateWithEnvironment(env *Environment, templateString string, vars map[s
 	return tmpl.Generate(vars)
 }
 
+// GenerateFile parses a template from a file path and returns a streaming renderer.
+// The helper mirrors ParseFile by wiring a filesystem loader rooted at the
+// template's directory so relative includes continue to work as expected.
+func GenerateFile(filename string, vars map[string]interface{}) (*TemplateStream, error) {
+	if filename == "" {
+		return nil, NewError(ErrorTypeTemplate, "filename must not be empty", nodes.Position{}, nil)
+	}
+
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	env := NewEnvironment()
+	env.SetLoader(NewFileSystemLoader(filepath.Dir(absPath)))
+
+	tmpl, err := env.ParseFile(filepath.Base(absPath))
+	if err != nil {
+		return nil, err
+	}
+
+	return tmpl.Generate(vars)
+}
+
 // GenerateToWriter renders a template string and writes the streamed output to
 // the provided writer. It is equivalent to calling Generate followed by WriteTo
 // and mirrors Jinja2's generator convenience helpers.
@@ -187,6 +212,21 @@ func GenerateToWriter(templateString string, vars map[string]interface{}, writer
 	if err != nil {
 		return 0, err
 	}
+	return stream.WriteTo(writer)
+}
+
+// GenerateFileToWriter streams a template loaded from disk directly into the
+// supplied writer, mirroring GenerateFile followed by WriteTo.
+func GenerateFileToWriter(filename string, vars map[string]interface{}, writer io.Writer) (int64, error) {
+	if writer == nil {
+		return 0, NewError(ErrorTypeTemplate, "writer must not be nil", nodes.Position{}, nil)
+	}
+
+	stream, err := GenerateFile(filename, vars)
+	if err != nil {
+		return 0, err
+	}
+
 	return stream.WriteTo(writer)
 }
 
