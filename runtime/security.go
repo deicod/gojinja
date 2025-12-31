@@ -18,6 +18,7 @@ type SecurityContext struct {
 	memoryUsage    int64
 	outputSize     int64
 	templatesUsed  map[string]bool
+	sessionID      string
 	mu             sync.RWMutex
 }
 
@@ -62,6 +63,13 @@ func DefaultSecurityPolicy() *SecurityPolicy {
 		AllowFilters("upper", "lower", "title", "capitalize", "trim", "length", "first", "last", "join", "replace", "escape", "safe").
 		// Allow safe functions only
 		AllowFunctions("range", "dict", "cycler", "joiner").
+		AllowTests(
+			"divisibleby", "defined", "undefined", "none", "null", "boolean", "true", "false", "number", "integer", "float",
+			"string", "sequence", "mapping", "iterable", "callable", "sameas", "escaped", "module", "list", "tuple", "dict",
+			"lower", "upper", "even", "odd", "in", "filter", "test", "equalto", "==", "!=", "eq", "ne", "lt", "le", "gt", "ge",
+			">", "<", ">=", "<=", "greaterthan", "lessthan", "matching", "search", "startingwith", "endingwith", "containing",
+			"infinite", "nan", "finite",
+		).
 		// Allow safe attribute patterns
 		AllowAttributePattern("^user\\.(name|email|avatar)$").
 		AllowAttributePattern("^config\\.(theme|language)$").
@@ -93,6 +101,7 @@ func DevelopmentSecurityPolicy() *SecurityPolicy {
 		// Use blacklist mode for filters (allow all except blocked)
 		SetFilterWhitelistMode(false).
 		SetFunctionWhitelistMode(false).
+		SetTestWhitelistMode(false).
 		SetAttributeWhitelistMode(false).
 		SetMethodWhitelistMode(false).
 		SetTemplateWhitelistMode(false).
@@ -128,8 +137,14 @@ func RestrictedSecurityPolicy() *SecurityPolicy {
 		SetLevel(SecurityLevelRestricted).
 		// Only allow basic text manipulation filters
 		AllowFilters("upper", "lower", "trim", "escape").
-		// Only allow range function
 		AllowFunctions("range").
+		AllowTests(
+			"divisibleby", "defined", "undefined", "none", "null", "boolean", "true", "false", "number", "integer", "float",
+			"string", "sequence", "mapping", "iterable", "callable", "sameas", "escaped", "module", "list", "tuple", "dict",
+			"lower", "upper", "even", "odd", "in", "filter", "test", "equalto", "==", "!=", "eq", "ne", "lt", "le", "gt", "ge",
+			">", "<", ">=", "<=", "greaterthan", "lessthan", "matching", "search", "startingwith", "endingwith", "containing",
+			"infinite", "nan", "finite",
+		).
 		// Very restrictive attribute access
 		AllowAttributes("value", "text", "content").
 		// Block all method calls
@@ -211,16 +226,17 @@ func (sm *SecurityManager) CreateSecurityContext(policyName, templateName string
 		return nil, err
 	}
 
+	sessionID := fmt.Sprintf("%s_%d", templateName, time.Now().UnixNano())
 	ctx := &SecurityContext{
 		policy:         policy,
 		violations:     make([]*SecurityViolation, 0),
 		auditLog:       make([]*SecurityAuditEntry, 0),
 		executionStart: time.Now(),
 		templatesUsed:  make(map[string]bool),
+		sessionID:      sessionID,
 	}
 
 	// Add to active sessions
-	sessionID := fmt.Sprintf("%s_%d", templateName, time.Now().UnixNano())
 	sm.mu.Lock()
 	sm.activeSessions[sessionID] = ctx
 	sm.mu.Unlock()
@@ -290,6 +306,31 @@ func (sc *SecurityContext) CheckFunctionAccess(functionName, templateName, conte
 		Context:     context,
 		Template:    templateName,
 		Description: fmt.Sprintf("Function access: %s", functionName),
+	}
+
+	if violation != nil {
+		entry.Description = violation.Description
+		violation.Template = templateName
+		sc.addViolation(violation)
+	}
+
+	sc.addAuditEntry(entry)
+
+	return allowed || !sc.policy.BlockOnViolation
+}
+
+// CheckTestAccess checks if test access is allowed
+func (sc *SecurityContext) CheckTestAccess(testName, templateName, context string) bool {
+	allowed, violation := sc.policy.IsTestAllowed(testName)
+
+	entry := &SecurityAuditEntry{
+		Timestamp:   time.Now(),
+		Operation:   "test_access",
+		Resource:    testName,
+		Allowed:     allowed,
+		Context:     context,
+		Template:    templateName,
+		Description: fmt.Sprintf("Test access: %s", testName),
 	}
 
 	if violation != nil {
@@ -627,13 +668,13 @@ func (sc *SecurityContext) GetExecutionStats() map[string]interface{} {
 	defer sc.mu.RUnlock()
 
 	return map[string]interface{}{
-		"execution_time":    time.Since(sc.executionStart),
-		"recursion_depth":   sc.recursionDepth,
-		"memory_usage":      sc.memoryUsage,
-		"output_size":       sc.outputSize,
-		"templates_used":    len(sc.templatesUsed),
-		"violations_count":  len(sc.violations),
-		"audit_entries":     len(sc.auditLog),
+		"execution_time":   time.Since(sc.executionStart),
+		"recursion_depth":  sc.recursionDepth,
+		"memory_usage":     sc.memoryUsage,
+		"output_size":      sc.outputSize,
+		"templates_used":   len(sc.templatesUsed),
+		"violations_count": len(sc.violations),
+		"audit_entries":    len(sc.auditLog),
 	}
 }
 

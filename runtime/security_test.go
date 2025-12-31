@@ -14,6 +14,8 @@ func TestSecurityPolicyBuilder(t *testing.T) {
 		AllowFilters("upper", "lower").
 		BlockFilters("eval").
 		AllowFunctions("range", "dict").
+		AllowTests("odd").
+		BlockTests("even").
 		BlockFunctions("open").
 		SetMaxExecutionTime(5 * time.Second).
 		SetMaxRecursionDepth(10).
@@ -47,6 +49,17 @@ func TestSecurityPolicyBuilder(t *testing.T) {
 	allowed, violation = policy.IsFunctionAllowed("open")
 	if allowed || violation == nil {
 		t.Errorf("Expected 'open' function to be blocked")
+	}
+
+	// Test test access
+	allowed, violation = policy.IsTestAllowed("odd")
+	if !allowed || violation != nil {
+		t.Errorf("Expected 'odd' test to be allowed")
+	}
+
+	allowed, violation = policy.IsTestAllowed("even")
+	if allowed || violation == nil {
+		t.Errorf("Expected 'even' test to be blocked")
 	}
 
 	// Test limits
@@ -383,6 +396,59 @@ func TestMultipleSecurityContexts(t *testing.T) {
 	// Cleanup
 	manager.CleanupSecurityContext("template1_123")
 	manager.CleanupSecurityContext("template2_123")
+}
+
+func TestSandboxBlocksDisallowedTest(t *testing.T) {
+	env := NewEnvironment()
+	env.SetSandboxed(true)
+
+	policy := NewSecurityPolicyBuilder("blocked-test", "Test policy").
+		Build()
+	env.SetSecurityPolicy(policy)
+
+	tmpl, err := env.ParseString("{% if 1 is odd %}yes{% endif %}", "blocked_test")
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if _, err := tmpl.ExecuteToString(nil); err == nil {
+		t.Fatalf("expected sandbox to block test 'odd'")
+	}
+}
+
+func TestSandboxBlocksDisallowedSelectTest(t *testing.T) {
+	env := NewEnvironment()
+	env.SetSandboxed(true)
+
+	policy := NewSecurityPolicyBuilder("blocked-select", "Test policy").
+		AllowFilters("select", "list").
+		Build()
+	env.SetSecurityPolicy(policy)
+
+	tmpl, err := env.ParseString("{{ [1, 2, 3]|select('odd')|list }}", "blocked_select")
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	if _, err := tmpl.ExecuteToString(nil); err == nil {
+		t.Fatalf("expected sandbox to block select test 'odd'")
+	}
+}
+
+func TestDevelopmentSandboxExecutes(t *testing.T) {
+	sandbox := NewDevelopmentEnvironment()
+	tmpl, err := sandbox.NewTemplateFromSource("{{ 1 + 1 }}", "dev")
+	if err != nil {
+		t.Fatalf("failed to parse template: %v", err)
+	}
+
+	rendered, err := sandbox.ExecuteToString(tmpl, nil)
+	if err != nil {
+		t.Fatalf("failed to execute template: %v", err)
+	}
+	if strings.TrimSpace(rendered) != "2" {
+		t.Fatalf("expected rendered output '2', got %q", strings.TrimSpace(rendered))
+	}
 }
 
 // BenchmarkSecurityPolicyCheck benchmarks security policy checks

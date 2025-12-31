@@ -40,6 +40,7 @@ type SecurityViolationType int
 const (
 	ViolationTypeFilterAccess SecurityViolationType = iota
 	ViolationTypeFunctionAccess
+	ViolationTypeTestAccess
 	ViolationTypeAttributeAccess
 	ViolationTypeMethodCall
 	ViolationTypeTemplateAccess
@@ -57,6 +58,8 @@ func (vt SecurityViolationType) String() string {
 		return "filter_access"
 	case ViolationTypeFunctionAccess:
 		return "function_access"
+	case ViolationTypeTestAccess:
+		return "test_access"
 	case ViolationTypeAttributeAccess:
 		return "attribute_access"
 	case ViolationTypeMethodCall:
@@ -93,52 +96,57 @@ type SecurityViolation struct {
 // SecurityPolicy defines the security policy for template execution
 type SecurityPolicy struct {
 	// Policy metadata
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Level       SecurityLevel  `json:"level"`
-	Version     string         `json:"version"`
-	Created     time.Time      `json:"created"`
-	Updated     time.Time      `json:"updated"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Level       SecurityLevel `json:"level"`
+	Version     string        `json:"version"`
+	Created     time.Time     `json:"created"`
+	Updated     time.Time     `json:"updated"`
 
 	// Filter restrictions
-	AllowedFilters    map[string]bool `json:"allowed_filters"`
-	BlockedFilters    map[string]bool `json:"blocked_filters"`
-	FilterWhitelist   bool            `json:"filter_whitelist"` // true = whitelist mode, false = blacklist mode
+	AllowedFilters  map[string]bool `json:"allowed_filters"`
+	BlockedFilters  map[string]bool `json:"blocked_filters"`
+	FilterWhitelist bool            `json:"filter_whitelist"` // true = whitelist mode, false = blacklist mode
 
 	// Function restrictions
-	AllowedFunctions   map[string]bool `json:"allowed_functions"`
-	BlockedFunctions   map[string]bool `json:"blocked_functions"`
-	FunctionWhitelist  bool            `json:"function_whitelist"` // true = whitelist mode, false = blacklist mode
+	AllowedFunctions  map[string]bool `json:"allowed_functions"`
+	BlockedFunctions  map[string]bool `json:"blocked_functions"`
+	FunctionWhitelist bool            `json:"function_whitelist"` // true = whitelist mode, false = blacklist mode
+
+	// Test restrictions
+	AllowedTests  map[string]bool `json:"allowed_tests"`
+	BlockedTests  map[string]bool `json:"blocked_tests"`
+	TestWhitelist bool            `json:"test_whitelist"` // true = whitelist mode, false = blacklist mode
 
 	// Attribute access restrictions
-	AllowedAttributes  map[string]bool `json:"allowed_attributes"`
-	BlockedAttributes  map[string]bool `json:"blocked_attributes"`
-	AttributeWhitelist bool            `json:"attribute_whitelist"` // true = whitelist mode, false = blacklist mode
-	AttributePatterns  []*regexp.Regexp `json:"-"` // Compiled regex patterns
+	AllowedAttributes  map[string]bool  `json:"allowed_attributes"`
+	BlockedAttributes  map[string]bool  `json:"blocked_attributes"`
+	AttributeWhitelist bool             `json:"attribute_whitelist"` // true = whitelist mode, false = blacklist mode
+	AttributePatterns  []*regexp.Regexp `json:"-"`                   // Compiled regex patterns
 
 	// Method call restrictions
-	AllowedMethods     map[string]bool `json:"allowed_methods"`
-	BlockedMethods     map[string]bool `json:"blocked_methods"`
-	MethodWhitelist    bool            `json:"method_whitelist"` // true = whitelist mode, false = blacklist mode
-	BlockAllMethods    bool            `json:"block_all_methods"`
+	AllowedMethods  map[string]bool `json:"allowed_methods"`
+	BlockedMethods  map[string]bool `json:"blocked_methods"`
+	MethodWhitelist bool            `json:"method_whitelist"` // true = whitelist mode, false = blacklist mode
+	BlockAllMethods bool            `json:"block_all_methods"`
 
 	// Template access restrictions
-	AllowedTemplates   map[string]bool `json:"allowed_templates"`
-	BlockedTemplates   map[string]bool `json:"blocked_templates"`
-	TemplateWhitelist  bool            `json:"template_whitelist"` // true = whitelist mode, false = blacklist mode
-	TemplatePatterns   []*regexp.Regexp `json:"-"` // Compiled regex patterns
+	AllowedTemplates  map[string]bool  `json:"allowed_templates"`
+	BlockedTemplates  map[string]bool  `json:"blocked_templates"`
+	TemplateWhitelist bool             `json:"template_whitelist"` // true = whitelist mode, false = blacklist mode
+	TemplatePatterns  []*regexp.Regexp `json:"-"`                  // Compiled regex patterns
 
 	// Resource limits
-	MaxExecutionTime   time.Duration `json:"max_execution_time"`
-	MaxRecursionDepth  int           `json:"max_recursion_depth"`
-	MaxMemoryUsage     int64         `json:"max_memory_usage"` // in bytes
-	MaxOutputSize      int64         `json:"max_output_size"`  // in bytes
+	MaxExecutionTime  time.Duration `json:"max_execution_time"`
+	MaxRecursionDepth int           `json:"max_recursion_depth"`
+	MaxMemoryUsage    int64         `json:"max_memory_usage"` // in bytes
+	MaxOutputSize     int64         `json:"max_output_size"`  // in bytes
 
 	// Content restrictions
 	RestrictedContentPatterns []*regexp.Regexp `json:"-"` // Compiled regex patterns
-	AllowHTML                 bool            `json:"allow_html"`
-	AllowJavaScript           bool            `json:"allow_javascript"`
-	AllowCSS                  bool            `json:"allow_css"`
+	AllowHTML                 bool             `json:"allow_html"`
+	AllowJavaScript           bool             `json:"allow_javascript"`
+	AllowCSS                  bool             `json:"allow_css"`
 
 	// Input validation
 	RequireInputSanitization bool     `json:"require_input_sanitization"`
@@ -146,11 +154,11 @@ type SecurityPolicy struct {
 	MaxInputLength           int      `json:"max_input_length"`
 
 	// Security options
-	EnableAuditLogging    bool `json:"enable_audit_logging"`
-	BlockOnViolation      bool `json:"block_on_violation"`
-	LogAllowedOperations  bool `json:"log_allowed_operations"`
-	EscapeOutput          bool `json:"escape_output"`
-	ValidateAllInputs     bool `json:"validate_all_inputs"`
+	EnableAuditLogging   bool `json:"enable_audit_logging"`
+	BlockOnViolation     bool `json:"block_on_violation"`
+	LogAllowedOperations bool `json:"log_allowed_operations"`
+	EscapeOutput         bool `json:"escape_output"`
+	ValidateAllInputs    bool `json:"validate_all_inputs"`
 
 	// Thread safety
 	mu sync.RWMutex `json:"-"`
@@ -177,6 +185,8 @@ func NewSecurityPolicyBuilder(name, description string) *SecurityPolicyBuilder {
 			BlockedFilters:    make(map[string]bool),
 			AllowedFunctions:  make(map[string]bool),
 			BlockedFunctions:  make(map[string]bool),
+			AllowedTests:      make(map[string]bool),
+			BlockedTests:      make(map[string]bool),
 			AllowedAttributes: make(map[string]bool),
 			BlockedAttributes: make(map[string]bool),
 			AllowedMethods:    make(map[string]bool),
@@ -185,17 +195,18 @@ func NewSecurityPolicyBuilder(name, description string) *SecurityPolicyBuilder {
 			BlockedTemplates:  make(map[string]bool),
 
 			// Default to whitelist mode for maximum security
-			FilterWhitelist:   true,
-			FunctionWhitelist: true,
+			FilterWhitelist:    true,
+			FunctionWhitelist:  true,
+			TestWhitelist:      true,
 			AttributeWhitelist: true,
-			MethodWhitelist:   true,
-			TemplateWhitelist: true,
+			MethodWhitelist:    true,
+			TemplateWhitelist:  true,
 
 			// Default resource limits
-			MaxExecutionTime:   30 * time.Second,
-			MaxRecursionDepth:  100,
-			MaxMemoryUsage:     50 * 1024 * 1024, // 50MB
-			MaxOutputSize:      10 * 1024 * 1024, // 10MB
+			MaxExecutionTime:  30 * time.Second,
+			MaxRecursionDepth: 100,
+			MaxMemoryUsage:    50 * 1024 * 1024, // 50MB
+			MaxOutputSize:     10 * 1024 * 1024, // 10MB
 
 			// Default security options
 			EnableAuditLogging:   true,
@@ -251,6 +262,24 @@ func (spb *SecurityPolicyBuilder) BlockFunctions(functions ...string) *SecurityP
 	for _, function := range functions {
 		spb.policy.BlockedFunctions[function] = true
 		delete(spb.policy.AllowedFunctions, function)
+	}
+	return spb
+}
+
+// AllowTests adds tests to the allowed list
+func (spb *SecurityPolicyBuilder) AllowTests(tests ...string) *SecurityPolicyBuilder {
+	for _, test := range tests {
+		spb.policy.AllowedTests[test] = true
+		delete(spb.policy.BlockedTests, test)
+	}
+	return spb
+}
+
+// BlockTests adds tests to the blocked list
+func (spb *SecurityPolicyBuilder) BlockTests(tests ...string) *SecurityPolicyBuilder {
+	for _, test := range tests {
+		spb.policy.BlockedTests[test] = true
+		delete(spb.policy.AllowedTests, test)
 	}
 	return spb
 }
@@ -432,6 +461,12 @@ func (spb *SecurityPolicyBuilder) SetFunctionWhitelistMode(whitelist bool) *Secu
 	return spb
 }
 
+// SetTestWhitelistMode sets whether to use whitelist mode for tests
+func (spb *SecurityPolicyBuilder) SetTestWhitelistMode(whitelist bool) *SecurityPolicyBuilder {
+	spb.policy.TestWhitelist = whitelist
+	return spb
+}
+
 // SetAttributeWhitelistMode sets whether to use whitelist mode for attributes
 func (spb *SecurityPolicyBuilder) SetAttributeWhitelistMode(whitelist bool) *SecurityPolicyBuilder {
 	spb.policy.AttributeWhitelist = whitelist
@@ -517,6 +552,42 @@ func (sp *SecurityPolicy) IsFunctionAllowed(functionName string) (bool, *Securit
 				Type:        ViolationTypeFunctionAccess,
 				Description: fmt.Sprintf("Function '%s' is not in the allowed list", functionName),
 				Context:     functionName,
+				Timestamp:   time.Now(),
+				Severity:    "medium",
+				Blocked:     sp.BlockOnViolation,
+			}
+			return false, violation
+		}
+	}
+
+	return true, nil
+}
+
+// IsTestAllowed checks if a test is allowed by the policy
+func (sp *SecurityPolicy) IsTestAllowed(testName string) (bool, *SecurityViolation) {
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
+
+	// Check blocked tests first
+	if sp.BlockedTests[testName] {
+		violation := &SecurityViolation{
+			Type:        ViolationTypeTestAccess,
+			Description: fmt.Sprintf("Test '%s' is blocked by security policy", testName),
+			Context:     testName,
+			Timestamp:   time.Now(),
+			Severity:    "high",
+			Blocked:     sp.BlockOnViolation,
+		}
+		return false, violation
+	}
+
+	// If whitelist mode, check if test is allowed
+	if sp.TestWhitelist {
+		if !sp.AllowedTests[testName] {
+			violation := &SecurityViolation{
+				Type:        ViolationTypeTestAccess,
+				Description: fmt.Sprintf("Test '%s' is not in the allowed list", testName),
+				Context:     testName,
 				Timestamp:   time.Now(),
 				Severity:    "medium",
 				Blocked:     sp.BlockOnViolation,
@@ -747,6 +818,8 @@ func (sp *SecurityPolicy) Clone() *SecurityPolicy {
 		BlockedFilters:    make(map[string]bool),
 		AllowedFunctions:  make(map[string]bool),
 		BlockedFunctions:  make(map[string]bool),
+		AllowedTests:      make(map[string]bool),
+		BlockedTests:      make(map[string]bool),
 		AllowedAttributes: make(map[string]bool),
 		BlockedAttributes: make(map[string]bool),
 		AllowedMethods:    make(map[string]bool),
@@ -756,19 +829,20 @@ func (sp *SecurityPolicy) Clone() *SecurityPolicy {
 
 		FilterWhitelist:    sp.FilterWhitelist,
 		FunctionWhitelist:  sp.FunctionWhitelist,
+		TestWhitelist:      sp.TestWhitelist,
 		AttributeWhitelist: sp.AttributeWhitelist,
 		MethodWhitelist:    sp.MethodWhitelist,
 		TemplateWhitelist:  sp.TemplateWhitelist,
 		BlockAllMethods:    sp.BlockAllMethods,
 
-		MaxExecutionTime:   sp.MaxExecutionTime,
-		MaxRecursionDepth:  sp.MaxRecursionDepth,
-		MaxMemoryUsage:     sp.MaxMemoryUsage,
-		MaxOutputSize:      sp.MaxOutputSize,
+		MaxExecutionTime:  sp.MaxExecutionTime,
+		MaxRecursionDepth: sp.MaxRecursionDepth,
+		MaxMemoryUsage:    sp.MaxMemoryUsage,
+		MaxOutputSize:     sp.MaxOutputSize,
 
-		AllowHTML:           sp.AllowHTML,
-		AllowJavaScript:     sp.AllowJavaScript,
-		AllowCSS:            sp.AllowCSS,
+		AllowHTML:       sp.AllowHTML,
+		AllowJavaScript: sp.AllowJavaScript,
+		AllowCSS:        sp.AllowCSS,
 
 		EnableAuditLogging:   sp.EnableAuditLogging,
 		BlockOnViolation:     sp.BlockOnViolation,
@@ -791,6 +865,12 @@ func (sp *SecurityPolicy) Clone() *SecurityPolicy {
 	}
 	for k, v := range sp.BlockedFunctions {
 		clone.BlockedFunctions[k] = v
+	}
+	for k, v := range sp.AllowedTests {
+		clone.AllowedTests[k] = v
+	}
+	for k, v := range sp.BlockedTests {
+		clone.BlockedTests[k] = v
 	}
 	for k, v := range sp.AllowedAttributes {
 		clone.AllowedAttributes[k] = v

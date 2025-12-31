@@ -133,6 +133,27 @@ func (e *Evaluator) checkCallSecurity(call *nodes.Call) bool {
 	return e.securityCtx.CheckFunctionAccess(functionName, templateName, "function_call")
 }
 
+func (e *Evaluator) checkTestAccess(testName string, node nodes.Node) error {
+	if !e.securityChecks || e.securityCtx == nil {
+		return nil
+	}
+
+	templateName := "unknown"
+	if e.ctx != nil && e.ctx.current != nil {
+		templateName = e.ctx.current.name
+	}
+
+	if !e.securityCtx.CheckTestAccess(testName, templateName, "test_usage") {
+		pos := nodes.Position{}
+		if node != nil {
+			pos = node.GetPosition()
+		}
+		return NewSecurityError("test_access", fmt.Sprintf("access to test '%s' blocked by security policy", testName), pos, node)
+	}
+
+	return nil
+}
+
 // extractMethodName extracts method name from a call node
 func (e *Evaluator) extractMethodName(call *nodes.Call) string {
 	if getattr, ok := call.Node.(*nodes.Getattr); ok {
@@ -2328,6 +2349,10 @@ func (e *Evaluator) visitFilter(node *nodes.Filter) interface{} {
 }
 
 func (e *Evaluator) visitTest(node *nodes.Test) interface{} {
+	if err := e.checkTestAccess(node.Name, node); err != nil {
+		return err
+	}
+
 	// Evaluate the input value
 	input := e.Evaluate(node.Node)
 	if err, ok := input.(error); ok {
@@ -3383,6 +3408,10 @@ func (e *Evaluator) evaluateTestOperator(op *nodes.Operand, value interface{}) i
 		}
 	default:
 		return NewTestError("", "invalid test expression", op.GetPosition(), op.Expr, nil)
+	}
+
+	if err := e.checkTestAccess(testName, op.Expr); err != nil {
+		return err
 	}
 
 	testFunc, ok := e.ctx.environment.GetTest(testName)

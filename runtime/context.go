@@ -170,10 +170,11 @@ func (s *Scope) All() map[string]interface{} {
 
 // Context represents the rendering context
 type Context struct {
-	environment *Environment
-	scope       *Scope
-	autoescape  bool
-	writer      io.Writer
+	environment     *Environment
+	scope           *Scope
+	autoescape      bool
+	writer          io.Writer
+	securityContext *SecurityContext
 
 	// Loop handling
 	loopStack   []*LoopContext
@@ -279,6 +280,17 @@ func (ctx *Context) rootScope() *Scope {
 func (ctx *Context) Set(name string, value interface{}) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
+
+	if ctx.securityContext != nil && (strings.HasPrefix(name, "__") || strings.HasPrefix(name, "_")) {
+		templateName := "unknown"
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		if !ctx.securityContext.CheckAttributeAccess(name, templateName, "variable_assignment") {
+			return
+		}
+	}
+
 	ctx.scope.Set(name, value)
 }
 
@@ -483,6 +495,16 @@ func (ctx *Context) Resolve(name string) (interface{}, error) {
 	ctx.mu.RLock()
 	defer ctx.mu.RUnlock()
 
+	if ctx.securityContext != nil && (strings.HasPrefix(name, "__") || strings.HasPrefix(name, "_")) {
+		templateName := "unknown"
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		if !ctx.securityContext.CheckAttributeAccess(name, templateName, "variable_access") {
+			return nil, fmt.Errorf("access to variable '%s' blocked by security policy", name)
+		}
+	}
+
 	// Check for special names
 	if name == "loop" {
 		if ctx.currentLoop == nil {
@@ -504,6 +526,19 @@ func (ctx *Context) Resolve(name string) (interface{}, error) {
 
 // ResolveAttribute resolves an attribute access
 func (ctx *Context) ResolveAttribute(obj interface{}, attr string) (interface{}, error) {
+	if ctx.securityContext != nil {
+		templateName := "unknown"
+		ctx.mu.RLock()
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		ctx.mu.RUnlock()
+		attributePath := buildAttributePath(obj, attr)
+		if !ctx.securityContext.CheckAttributeAccess(attributePath, templateName, "attribute_access") {
+			return nil, fmt.Errorf("access to attribute '%s' blocked by security policy", attributePath)
+		}
+	}
+
 	if obj == nil {
 		if ctx.environment != nil {
 			if undef := ctx.environment.newUndefined(attr); !isStrictUndefined(undef) {
@@ -528,8 +563,29 @@ func (ctx *Context) ResolveAttribute(obj interface{}, attr string) (interface{},
 	return resolveAttributeFallback(obj, attr)
 }
 
+func buildAttributePath(obj interface{}, attr string) string {
+	objType := reflect.TypeOf(obj)
+	if objType != nil {
+		return fmt.Sprintf("%s.%s", objType.String(), attr)
+	}
+	return attr
+}
+
 // ResolveIndex resolves an index access
 func (ctx *Context) ResolveIndex(obj interface{}, index interface{}) (interface{}, error) {
+	if ctx.securityContext != nil {
+		templateName := "unknown"
+		ctx.mu.RLock()
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		ctx.mu.RUnlock()
+		indexStr := fmt.Sprintf("%v", index)
+		if !ctx.securityContext.ValidateInput(indexStr, "index_access", templateName, "index_resolution") {
+			return nil, fmt.Errorf("index access blocked by security policy")
+		}
+	}
+
 	if obj == nil {
 		if ctx.environment != nil {
 			if undef := ctx.environment.newUndefined(fmt.Sprintf("%v", index)); !isStrictUndefined(undef) {

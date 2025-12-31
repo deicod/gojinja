@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/deicod/gojinja/nodes"
 )
@@ -200,13 +199,32 @@ func (t *Template) Generate(vars map[string]interface{}) (*TemplateStream, error
 func (t *Template) ExecuteWithContext(ctx *Context) error {
 	// Create evaluator - use secure evaluator if environment is sandboxed
 	var evaluator *Evaluator
-	if t.environment.IsSandboxed() {
-		// Create security context for sandboxed execution
-		secCtx, err := t.environment.GetSecurityManager().CreateSecurityContext("default", t.name)
-		if err != nil {
-			return fmt.Errorf("failed to create security context: %w", err)
+	if ctx.securityContext != nil || t.environment.IsSandboxed() {
+		secCtx := ctx.securityContext
+		if secCtx == nil {
+			securityManager := t.environment.GetSecurityManager()
+			if securityManager == nil {
+				return fmt.Errorf("security manager is nil")
+			}
+
+			policyName := "default"
+			if policy := t.environment.GetSecurityPolicy(); policy != nil && policy.Name != "" {
+				policyName = policy.Name
+				if _, err := securityManager.GetPolicy(policyName); err != nil {
+					if err := securityManager.AddPolicy(policyName, policy); err != nil {
+						return fmt.Errorf("failed to register security policy: %w", err)
+					}
+				}
+			}
+
+			var err error
+			secCtx, err = securityManager.CreateSecurityContext(policyName, t.name)
+			if err != nil {
+				return fmt.Errorf("failed to create security context: %w", err)
+			}
+			ctx.securityContext = secCtx
+			defer securityManager.CleanupSecurityContext(secCtx.sessionID)
 		}
-		defer t.environment.GetSecurityManager().CleanupSecurityContext(fmt.Sprintf("%s_%d", t.name, time.Now().UnixNano()))
 
 		evaluator = NewSecureEvaluator(ctx, secCtx)
 	} else {

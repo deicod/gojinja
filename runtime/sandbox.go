@@ -21,11 +21,41 @@ type SandboxEnvironment struct {
 // NewSandboxEnvironment creates a new sandboxed environment
 func NewSandboxEnvironment(policyName string) *SandboxEnvironment {
 	baseEnv := NewEnvironment()
+	baseEnv.SetSandboxed(true)
+	manager := GetGlobalSecurityManager()
+	policy := resolveSandboxPolicy(manager, policyName)
+	if policy != nil {
+		baseEnv.SetSecurityPolicy(policy)
+		if manager != nil {
+			if _, err := manager.GetPolicy(policy.Name); err != nil {
+				_ = manager.AddPolicy(policy.Name, policy)
+			}
+		}
+	}
 
 	return &SandboxEnvironment{
 		Environment:     baseEnv,
-		securityManager: GetGlobalSecurityManager(),
+		securityManager: manager,
 		policyName:      policyName,
+	}
+}
+
+func resolveSandboxPolicy(manager *SecurityManager, policyName string) *SecurityPolicy {
+	if manager != nil {
+		if policy, err := manager.GetPolicy(policyName); err == nil {
+			return policy
+		}
+	}
+
+	switch policyName {
+	case "development":
+		return DevelopmentSecurityPolicy()
+	case "restricted":
+		return RestrictedSecurityPolicy()
+	case "default":
+		return DefaultSecurityPolicy()
+	default:
+		return nil
 	}
 }
 
@@ -46,12 +76,13 @@ func NewRestrictedEnvironment() *SandboxEnvironment {
 
 // SetSecurityPolicy sets the security policy for the sandbox
 func (se *SandboxEnvironment) SetSecurityPolicy(policyName string) error {
-	_, err := se.securityManager.GetPolicy(policyName)
+	policy, err := se.securityManager.GetPolicy(policyName)
 	if err != nil {
 		return err
 	}
 
 	se.policyName = policyName
+	se.Environment.SetSecurityPolicy(policy)
 	return nil
 }
 
@@ -67,7 +98,7 @@ func (se *SandboxEnvironment) ExecuteTemplate(template *Template, vars map[strin
 	if err != nil {
 		return fmt.Errorf("failed to create security context: %w", err)
 	}
-	defer se.securityManager.CleanupSecurityContext(fmt.Sprintf("%s_%d", template.name, time.Now().UnixNano()))
+	defer se.securityManager.CleanupSecurityContext(secCtx.sessionID)
 
 	// Create sandboxed context
 	ctx := NewSandboxedContext(secCtx, vars, se.Environment, writer)
@@ -130,6 +161,7 @@ func NewSandboxedContext(secCtx *SecurityContext, vars map[string]interface{}, e
 	if writer != nil {
 		baseCtx.writer = writer
 	}
+	baseCtx.securityContext = secCtx
 
 	sc := &SandboxedContext{
 		Context:         baseCtx,
@@ -257,7 +289,7 @@ func (sew *SecureEnvironmentWrapper) GetFilter(name string) (FilterFunc, bool) {
 // GetTest returns a test function with security checks
 func (sew *SecureEnvironmentWrapper) GetTest(name string) (TestFunc, bool) {
 	// Check security policy
-	if !sew.securityContext.CheckFunctionAccess(name, "unknown", "test_lookup") {
+	if !sew.securityContext.CheckTestAccess(name, "unknown", "test_lookup") {
 		return nil, false
 	}
 

@@ -367,18 +367,22 @@ func (env *Environment) IsSandboxed() bool {
 // ExecuteTemplate executes a template with security controls
 func (env *Environment) ExecuteTemplate(template *Template, vars map[string]interface{}, writer io.Writer) error {
 	if env.sandboxed {
+		policyName := "default"
+		if env.securityPolicy != nil {
+			if env.securityPolicy.Name != "" {
+				policyName = env.securityPolicy.Name
+			}
+			if _, err := env.securityManager.GetPolicy(policyName); err != nil {
+				if err := env.securityManager.AddPolicy(policyName, env.securityPolicy); err != nil {
+					return fmt.Errorf("failed to register security policy: %w", err)
+				}
+			}
+		}
+
 		sandbox := &SandboxEnvironment{
 			Environment:     env,
 			securityManager: env.securityManager,
-			policyName:      "default",
-		}
-
-		if env.securityPolicy != nil {
-			// Register the environment's policy if it has a custom name
-			if env.securityPolicy.Name != "default" && env.securityPolicy.Name != "development" && env.securityPolicy.Name != "restricted" {
-				env.securityManager.AddPolicy(env.securityPolicy.Name, env.securityPolicy)
-				sandbox.policyName = env.securityPolicy.Name
-			}
+			policyName:      policyName,
 		}
 
 		return sandbox.ExecuteTemplate(template, vars, writer)
@@ -389,7 +393,7 @@ func (env *Environment) ExecuteTemplate(template *Template, vars map[string]inte
 	if err != nil {
 		return fmt.Errorf("failed to create security context: %w", err)
 	}
-	defer env.securityManager.CleanupSecurityContext(fmt.Sprintf("%s_%d", template.name, time.Now().UnixNano()))
+	defer env.securityManager.CleanupSecurityContext(secCtx.sessionID)
 
 	// Create context
 	ctx := NewContextWithEnvironment(env, vars)

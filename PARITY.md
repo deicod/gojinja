@@ -52,6 +52,6 @@
 ## Error Handling & Security
 
 - Runtime errors capture positions and wrap underlying causes, and dedicated `TemplateNotFoundError` / `TemplatesNotFoundError` types align with Jinja expectations (`runtime/errors.go`).
-- Security policy builders, sandbox environments, and policy enforcement hooks are in place for filter/test/global whitelisting and resource limits (`runtime/security.go`, `runtime/environment.go`).
+- Security policy builders now include explicit test allow/block controls, and sandbox execution enforces filter/test/global access alongside resource limits (`runtime/policy.go`, `runtime/security.go`, `runtime/evaluator.go`).
 
-**Remaining gaps**: the sandbox still needs comprehensive filter/test coverage and richer stack traces for parity with Python's error diagnostics.
+**Remaining gaps**: richer stack traces for parity with Python's error diagnostics.

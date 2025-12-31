@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/deicod/gojinja/nodes"
 )
 
 var (
@@ -1682,6 +1684,9 @@ func filterSelect(ctx *Context, value interface{}, args ...interface{}) (interfa
 	}
 
 	testName := toString(args[0])
+	if err := checkTestAccess(ctx, testName, "filter_select"); err != nil {
+		return nil, err
+	}
 	testFunc, ok := ctx.environment.GetTest(testName)
 	if !ok {
 		return nil, fmt.Errorf("unknown test: %s", testName)
@@ -1716,6 +1721,9 @@ func filterReject(ctx *Context, value interface{}, args ...interface{}) (interfa
 	}
 
 	testName := toString(args[0])
+	if err := checkTestAccess(ctx, testName, "filter_reject"); err != nil {
+		return nil, err
+	}
 	testFunc, ok := ctx.environment.GetTest(testName)
 	if !ok {
 		return nil, fmt.Errorf("unknown test: %s", testName)
@@ -1791,6 +1799,9 @@ func filterSelectattr(ctx *Context, value interface{}, args ...interface{}) (int
 				result = append(result, item)
 			}
 		} else {
+			if err := checkTestAccess(ctx, testName, "filter_selectattr"); err != nil {
+				return nil, err
+			}
 			testFunc, ok := ctx.environment.GetTest(testName)
 			if !ok {
 				continue
@@ -1855,6 +1866,9 @@ func filterRejectattr(ctx *Context, value interface{}, args ...interface{}) (int
 				result = append(result, item)
 			}
 		} else {
+			if err := checkTestAccess(ctx, testName, "filter_rejectattr"); err != nil {
+				return nil, err
+			}
 			testFunc, ok := ctx.environment.GetTest(testName)
 			if !ok {
 				result = append(result, item)
@@ -2176,6 +2190,18 @@ func testFilter(ctx *Context, value interface{}, args ...interface{}) (interface
 	if name == "" {
 		return false, nil
 	}
+	if ctx.securityContext != nil {
+		ctx.mu.RLock()
+		secCtx := ctx.securityContext
+		templateName := "unknown"
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		ctx.mu.RUnlock()
+		if secCtx != nil && !secCtx.CheckFilterAccess(name, templateName, "test_filter") {
+			return false, nil
+		}
+	}
 	_, ok := ctx.environment.GetFilter(name)
 	return ok, nil
 }
@@ -2188,8 +2214,42 @@ func testTest(ctx *Context, value interface{}, args ...interface{}) (interface{}
 	if name == "" {
 		return false, nil
 	}
+	if ctx.securityContext != nil {
+		ctx.mu.RLock()
+		secCtx := ctx.securityContext
+		templateName := "unknown"
+		if ctx.current != nil {
+			templateName = ctx.current.name
+		}
+		ctx.mu.RUnlock()
+		if secCtx != nil && !secCtx.CheckTestAccess(name, templateName, "test_lookup") {
+			return false, nil
+		}
+	}
 	_, ok := ctx.environment.GetTest(name)
 	return ok, nil
+}
+
+func checkTestAccess(ctx *Context, testName, context string) error {
+	if ctx == nil {
+		return nil
+	}
+
+	ctx.mu.RLock()
+	secCtx := ctx.securityContext
+	templateName := "unknown"
+	if ctx.current != nil {
+		templateName = ctx.current.name
+	}
+	ctx.mu.RUnlock()
+
+	if secCtx == nil {
+		return nil
+	}
+	if !secCtx.CheckTestAccess(testName, templateName, context) {
+		return NewSecurityError("test_access", fmt.Sprintf("access to test '%s' blocked by security policy", testName), nodes.Position{}, nil)
+	}
+	return nil
 }
 
 func testEq(ctx *Context, value interface{}, args ...interface{}) (interface{}, error) {
