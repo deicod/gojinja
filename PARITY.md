@@ -16,7 +16,7 @@
 - Tuple/list/dict literals, macro calls, positional/keyword argument binding, unpacking assignment targets, and namespace references mirror Python Jinja behaviour (`parser/expressions.go`, `runtime/evaluator.go`).
 - Helper expressions for inspecting runtime state are provided via the builtin `environment()` and `context()` globals, returning the active environment and a snapshot of the scope (`runtime/environment.go`, `runtime/context.go`).
 
-**Remaining gaps**: async/await expressions are still missing.
+**Remaining gaps**: async rendering modes are still missing.
 
 ## Built-in Filters
 
