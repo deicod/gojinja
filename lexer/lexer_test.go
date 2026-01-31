@@ -175,6 +175,64 @@ func TestTrimBlocks(t *testing.T) {
 	}
 }
 
+func TestTrimBlocksWithLStripBlocks(t *testing.T) {
+	config := DefaultLexerConfig()
+	config.TrimBlocks = true
+	config.LstripBlocks = true
+	lexer := NewLexer(config)
+
+	template := "line1\n    {% if condition %}\nline2\n    {% endif %}\nline3"
+
+	stream, err := lexer.Tokenize(template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var textContent strings.Builder
+	for {
+		token := stream.Next()
+		if token.Type == TokenEOF {
+			break
+		}
+		if token.Type == TokenText {
+			textContent.WriteString(token.Value)
+		}
+	}
+
+	if got := textContent.String(); got != "line1\nline2\nline3" {
+		t.Fatalf("expected trimmed newlines without losing content, got %q", got)
+	}
+}
+
+func TestLineStatementsStripLeadingWhitespaceOnly(t *testing.T) {
+	config := DefaultLexerConfig()
+	config.LstripBlocks = true
+	config.Delimiters.LineStatement = "#"
+	lexer := NewLexer(config)
+
+	template := "text\n    # if condition\n    content\n    # endif\ntext2"
+
+	stream, err := lexer.Tokenize(template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var textContent strings.Builder
+	for {
+		token := stream.Next()
+		if token.Type == TokenEOF {
+			break
+		}
+		if token.Type == TokenText {
+			textContent.WriteString(token.Value)
+		}
+	}
+
+	if got := textContent.String(); got != "text\n    content\ntext2" {
+		t.Fatalf("expected line statements to strip only control line, got %q", got)
+	}
+}
+
 func TestBalancedBraces(t *testing.T) {
 	config := DefaultLexerConfig()
 	lexer := NewLexer(config)

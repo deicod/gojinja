@@ -96,6 +96,11 @@ func (l *Lexer) buildRules() {
 	}
 
 	// Root state rules - process text before delimiters
+	textPattern := "[^{]+"
+	if l.config.LstripBlocks {
+		textPattern = "[^\n{]+"
+	}
+
 	l.rules[StateRoot] = []*Rule{
 		{
 			Regex:    c("(.*?)(" + rootParts + ")"),
@@ -103,7 +108,7 @@ func (l *Lexer) buildRules() {
 			NewState: strPtr("#bygroup"),
 		},
 		{
-			Regex:    c("[^{]+"),
+			Regex:    c(textPattern),
 			Tokens:   "data",
 			NewState: nil,
 		},
@@ -672,30 +677,44 @@ func (l *Lexer) processMatch(rule *Rule, source string, loc []int, pos, lineno, 
 			if len(groups) > 0 {
 				// Check if we have multiple groups (text + delimiter)
 				if len(groups) >= 2 {
-					// First group is text before delimiter
-					if groups[1] != "" {
-						tokens = append(tokens, TokenInfo{
-							Line:   lineno,
-							Column: column,
-							Type:   "data",
-							Value:  groups[1],
-						})
-					}
+					rawText := groups[1]
+					textValue := rawText
+					matchedDelimiter := ""
 
 					// Find which delimiter group matched (after the text group)
 					for i := 2; i < len(groups); i++ {
 						if groups[i] != "" {
-							tokenType := l.mapMatchToTokenType(groups[i])
-							if tokenType != "" {
-								tokenColumn := column + utf8.RuneCountInString(groups[1])
-								tokens = append(tokens, TokenInfo{
-									Line:   lineno,
-									Column: tokenColumn,
-									Type:   tokenType,
-									Value:  groups[i],
-								})
-							}
+							matchedDelimiter = groups[i]
 							break
+						}
+					}
+
+					if matchedDelimiter != "" && l.config.LstripBlocks &&
+						(strings.HasPrefix(matchedDelimiter, l.config.Delimiters.BlockStart) ||
+							strings.HasPrefix(matchedDelimiter, l.config.Delimiters.CommentStart)) {
+						textValue, newlinesStripped = l.applyWhitespaceControl(rawText, "", lineStarting)
+					}
+
+					// First group is text before delimiter
+					if textValue != "" {
+						tokens = append(tokens, TokenInfo{
+							Line:   lineno,
+							Column: column,
+							Type:   "data",
+							Value:  textValue,
+						})
+					}
+
+					if matchedDelimiter != "" {
+						tokenType := l.mapMatchToTokenType(matchedDelimiter)
+						if tokenType != "" {
+							tokenColumn := column + utf8.RuneCountInString(rawText)
+							tokens = append(tokens, TokenInfo{
+								Line:   lineno,
+								Column: tokenColumn,
+								Type:   tokenType,
+								Value:  matchedDelimiter,
+							})
 						}
 					}
 				} else {
