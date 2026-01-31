@@ -224,6 +224,10 @@ func (e *Evaluator) Visit(node nodes.Node) interface{} {
 		return e.visitBreak(n)
 	case *nodes.Scope:
 		return e.visitScope(n)
+	case *nodes.ScopedEvalContextModifier:
+		return e.visitScopedEvalContextModifier(n)
+	case *nodes.EvalContextModifier:
+		return e.visitEvalContextModifier(n)
 	case *nodes.Namespace:
 		return e.visitNamespace(n)
 	case *nodes.Trans:
@@ -1345,6 +1349,70 @@ func (e *Evaluator) visitScope(node *nodes.Scope) interface{} {
 	}
 
 	return nil
+}
+
+func (e *Evaluator) visitScopedEvalContextModifier(node *nodes.ScopedEvalContextModifier) interface{} {
+	if e.ctx == nil {
+		return NewError(ErrorTypeTemplate, "no context available for eval context modifier", node.GetPosition(), node)
+	}
+
+	oldAutoescape, changed, err := e.applyEvalContextOptions(node.Options)
+	if err != nil {
+		return err
+	}
+	if changed {
+		defer e.ctx.SetAutoescape(oldAutoescape)
+	}
+
+	for _, stmt := range node.Body {
+		if result := e.Evaluate(stmt); result != nil {
+			if err, ok := result.(error); ok {
+				return err
+			}
+			if signal, ok := isControlSignal(result); ok {
+				return signal
+			}
+		}
+	}
+
+	return nil
+}
+
+func (e *Evaluator) visitEvalContextModifier(node *nodes.EvalContextModifier) interface{} {
+	if e.ctx == nil {
+		return NewError(ErrorTypeTemplate, "no context available for eval context modifier", node.GetPosition(), node)
+	}
+
+	_, _, err := e.applyEvalContextOptions(node.Options)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Evaluator) applyEvalContextOptions(options []*nodes.Keyword) (bool, bool, error) {
+	oldAutoescape := e.ctx.ShouldAutoescape()
+	changed := false
+
+	for _, option := range options {
+		if option == nil {
+			continue
+		}
+		if !strings.EqualFold(option.Key, "autoescape") {
+			continue
+		}
+
+		value := e.Evaluate(option.Value)
+		if err, ok := value.(error); ok {
+			return oldAutoescape, changed, err
+		}
+
+		e.ctx.SetAutoescape(isTruthyValue(value))
+		changed = true
+	}
+
+	return oldAutoescape, changed, nil
 }
 
 func (e *Evaluator) visitNamespace(node *nodes.Namespace) interface{} {

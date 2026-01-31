@@ -157,3 +157,45 @@ func TestSelectAutoescapeIntegration(t *testing.T) {
 		t.Fatalf("expected environment selector to use default false for unmatched extensions")
 	}
 }
+
+func TestAutoescapeStatementOverridesEnvironment(t *testing.T) {
+	env := NewEnvironment()
+	env.SetAutoescape(false)
+
+	tmpl, err := env.ParseString(`{{ value }}|{% autoescape true %}{{ value }}{% endautoescape %}|{{ value }}`, "autoescape_tag")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	value := "<strong>Hi</strong>"
+	result, err := tmpl.ExecuteToString(map[string]interface{}{"value": value})
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	expected := "<strong>Hi</strong>|&lt;strong&gt;Hi&lt;/strong&gt;|<strong>Hi</strong>"
+	if result != expected {
+		t.Fatalf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestAutoescapeStatementDisablesWithinBlock(t *testing.T) {
+	env := NewEnvironment()
+	env.SetAutoescape(true)
+
+	tmpl, err := env.ParseString(`{{ value }}|{% autoescape false %}{{ value }}{% endautoescape %}|{{ value }}`, "autoescape_off")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	value := "<em>Hi</em>"
+	result, err := tmpl.ExecuteToString(map[string]interface{}{"value": value})
+	if err != nil {
+		t.Fatalf("execute error: %v", err)
+	}
+
+	expected := "&lt;em&gt;Hi&lt;/em&gt;|<em>Hi</em>|&lt;em&gt;Hi&lt;/em&gt;"
+	if result != expected {
+		t.Fatalf("expected %q, got %q", expected, result)
+	}
+}
