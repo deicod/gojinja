@@ -118,6 +118,34 @@ func TestLStripBlocks(t *testing.T) {
 	}
 }
 
+func TestLStripBlocksPreservesBlankLines(t *testing.T) {
+	config := DefaultLexerConfig()
+	config.LstripBlocks = true
+	lexer := NewLexer(config)
+
+	template := "line1\n\n{% if condition %}\nline2"
+
+	stream, err := lexer.Tokenize(template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("Tokenize failed: %v", err)
+	}
+
+	var textContent strings.Builder
+	for {
+		token := stream.Next()
+		if token.Type == TokenEOF {
+			break
+		}
+		if token.Type == TokenText {
+			textContent.WriteString(token.Value)
+		}
+	}
+
+	if got := textContent.String(); got != "line1\n\n\nline2" {
+		t.Fatalf("expected blank line preserved, got %q", got)
+	}
+}
+
 func TestTrimBlocks(t *testing.T) {
 	config := DefaultLexerConfig()
 	config.TrimBlocks = true
