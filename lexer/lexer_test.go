@@ -233,6 +233,35 @@ func TestLineStatementsStripLeadingWhitespaceOnly(t *testing.T) {
 	}
 }
 
+func TestLineCommentsStripLeadingWhitespaceOnly(t *testing.T) {
+	config := DefaultLexerConfig()
+	config.LstripBlocks = true
+	config.Delimiters.LineComment = "##"
+	lexer := NewLexer(config)
+
+	template := "text\n    ## comment line\n    content\ntext2"
+
+	stream, err := lexer.Tokenize(template, "test", "test.html", "")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var textContent strings.Builder
+	for {
+		token := stream.Next()
+		if token.Type == TokenEOF {
+			break
+		}
+		if token.Type == TokenText {
+			textContent.WriteString(token.Value)
+		}
+	}
+
+	if got := textContent.String(); got != "text\n    content\ntext2" {
+		t.Fatalf("expected line comment to strip only control line, got %q", got)
+	}
+}
+
 func TestBalancedBraces(t *testing.T) {
 	config := DefaultLexerConfig()
 	lexer := NewLexer(config)

@@ -239,7 +239,7 @@ func (t *Template) ExecuteWithContext(ctx *Context) error {
 	// Evaluate the template
 	result := evaluator.Evaluate(t.ast)
 	if err, ok := result.(error); ok {
-		return err
+		return WrapErrorWithContext(err, nodes.Position{}, t.ast, ctx)
 	}
 
 	// Check for any errors that occurred during rendering

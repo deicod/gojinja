@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -25,6 +26,20 @@ const (
 	ErrorTypeImport     ErrorType = "import_error"
 )
 
+// TraceFrame represents a single template frame in an error traceback.
+type TraceFrame struct {
+	Template string
+	Line     int
+	Column   int
+	Context  string
+}
+
+// TraceCarrier marks errors that already include a template traceback.
+type TraceCarrier interface {
+	error
+	TemplateTrace() []TraceFrame
+}
+
 // Error represents a runtime error with position information
 type Error struct {
 	Type     ErrorType
@@ -32,22 +47,79 @@ type Error struct {
 	Position nodes.Position
 	Node     nodes.Node
 	Cause    error
+	Trace    []TraceFrame
 }
 
 // Error implements the error interface
 func (e *Error) Error() string {
+	var base string
 	if e.Position.Line > 0 {
 		if e.Position.Column > 0 {
-			return fmt.Sprintf("%s at line %d, column %d: %s", e.Type, e.Position.Line, e.Position.Column, e.Message)
+			base = fmt.Sprintf("%s at line %d, column %d: %s", e.Type, e.Position.Line, e.Position.Column, e.Message)
+		} else {
+			base = fmt.Sprintf("%s at line %d: %s", e.Type, e.Position.Line, e.Message)
 		}
-		return fmt.Sprintf("%s at line %d: %s", e.Type, e.Position.Line, e.Message)
+	} else {
+		base = fmt.Sprintf("%s: %s", e.Type, e.Message)
 	}
-	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+
+	if len(e.Trace) == 0 {
+		return base
+	}
+
+	var builder strings.Builder
+	builder.WriteString("Traceback (most recent call last):\n")
+	for _, frame := range e.Trace {
+		builder.WriteString(formatTraceFrame(frame))
+	}
+	builder.WriteString(base)
+	return builder.String()
 }
 
 // Unwrap returns the underlying cause
 func (e *Error) Unwrap() error {
 	return e.Cause
+}
+
+// TemplateTrace returns any captured traceback frames.
+func (e *Error) TemplateTrace() []TraceFrame {
+	if e == nil || len(e.Trace) == 0 {
+		return nil
+	}
+	trace := make([]TraceFrame, len(e.Trace))
+	copy(trace, e.Trace)
+	return trace
+}
+
+func formatTraceFrame(frame TraceFrame) string {
+	label := frame.Template
+	if label == "" {
+		label = "<unknown>"
+	}
+	if frame.Context != "" {
+		label = fmt.Sprintf("%s (%s)", label, frame.Context)
+	}
+
+	if frame.Line > 0 {
+		if frame.Column > 0 {
+			return fmt.Sprintf("  File %q, line %d, column %d\n", label, frame.Line, frame.Column)
+		}
+		return fmt.Sprintf("  File %q, line %d\n", label, frame.Line)
+	}
+	return fmt.Sprintf("  File %q\n", label)
+}
+
+func buildTraceFrame(ctx *Context, node nodes.Node, context string) TraceFrame {
+	frame := TraceFrame{Context: context}
+	if ctx != nil && ctx.current != nil {
+		frame.Template = ctx.current.name
+	}
+	if node != nil {
+		pos := node.GetPosition()
+		frame.Line = pos.Line
+		frame.Column = pos.Column
+	}
+	return frame
 }
 
 // NewError creates a new runtime error
@@ -115,6 +187,111 @@ func WrapError(err error, position nodes.Position, node nodes.Node) error {
 			Cause:    err,
 		}
 	}
+}
+
+// WrapErrorWithContext attaches a trace snapshot and position to errors.
+func WrapErrorWithContext(err error, position nodes.Position, node nodes.Node, ctx *Context) error {
+	if err == nil {
+		return nil
+	}
+	if carrier := traceCarrier(err); carrier != nil && len(carrier.TemplateTrace()) > 0 {
+		return err
+	}
+
+	trace := ctxTraceSnapshot(ctx)
+	if attachTrace(err, position, node, trace) {
+		return err
+	}
+
+	wrapped := WrapError(err, position, node)
+	if len(trace) == 0 {
+		return wrapped
+	}
+
+	if runtimeErr := asRuntimeError(wrapped); runtimeErr != nil {
+		runtimeErr.Trace = trace
+	}
+
+	return wrapped
+}
+
+func attachTrace(err error, position nodes.Position, node nodes.Node, trace []TraceFrame) bool {
+	base := runtimeErrorFrom(err)
+	if base == nil {
+		return false
+	}
+
+	if position.Line != 0 {
+		base.Position = position
+	}
+	if node != nil {
+		base.Node = node
+	}
+	if len(base.Trace) == 0 && len(trace) > 0 {
+		base.Trace = trace
+	}
+
+	return true
+}
+
+func runtimeErrorFrom(err error) *Error {
+	switch e := err.(type) {
+	case *Error:
+		return e
+	case *UndefinedError:
+		return asRuntimeError(e.error)
+	case *SecurityError:
+		return asRuntimeError(e.error)
+	case *FilterError:
+		return asRuntimeError(e.error)
+	case *TestError:
+		return asRuntimeError(e.error)
+	case *AssignmentError:
+		return asRuntimeError(e.error)
+	case *ContextError:
+		return asRuntimeError(e.error)
+	case *MacroError:
+		return asRuntimeError(e.error)
+	case *ImportError:
+		return asRuntimeError(e.error)
+	case *TemplateNotFoundError:
+		return e.runtimeError()
+	case *TemplatesNotFoundError:
+		return e.runtimeError()
+	default:
+		return nil
+	}
+}
+
+func ctxTraceSnapshot(ctx *Context) []TraceFrame {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.TraceSnapshot()
+}
+
+func asRuntimeError(err error) *Error {
+	if err == nil {
+		return nil
+	}
+
+	var runtimeErr *Error
+	if errors.As(err, &runtimeErr) {
+		return runtimeErr
+	}
+
+	return nil
+}
+
+func traceCarrier(err error) TraceCarrier {
+	if err == nil {
+		return nil
+	}
+	var carrier TraceCarrier
+	if errors.As(err, &carrier) {
+		return carrier
+	}
+	return nil
 }
 
 // UndefinedError represents an undefined variable error

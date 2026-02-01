@@ -298,6 +298,11 @@ func (m *Macro) Execute(ctx *Context, args []interface{}, kwargs map[string]inte
 
 	ctx.PushMacro(m)
 	defer ctx.PopMacro()
+	if ctx != nil {
+		frame := buildTraceFrame(ctx, nil, fmt.Sprintf("macro %s", m.Name))
+		ctx.PushTrace(frame)
+		defer ctx.PopTrace()
+	}
 
 	// Create a new scope for the macro
 	ctx.PushScope()
@@ -325,7 +330,7 @@ func (m *Macro) Execute(ctx *Context, args []interface{}, kwargs map[string]inte
 	for _, node := range m.Body {
 		value := evaluator.Evaluate(node)
 		if err, ok := value.(error); ok {
-			return nil, err
+			return nil, WrapErrorWithContext(err, node.GetPosition(), node, ctx)
 		}
 		if signal, ok := isControlSignal(value); ok {
 			return signal, nil

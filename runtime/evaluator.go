@@ -74,6 +74,11 @@ func (e *Evaluator) Evaluate(node nodes.Node) interface{} {
 		return nil
 	}
 
+	if e.ctx != nil {
+		e.ctx.PushTrace(buildTraceFrame(e.ctx, node, ""))
+		defer e.ctx.PopTrace()
+	}
+
 	// Perform security checks if enabled
 	if e.securityChecks && e.securityCtx != nil {
 		if !e.performSecurityChecks(node) {
@@ -519,7 +524,7 @@ func (e *Evaluator) visitBlock(node *nodes.Block) interface{} {
 	for _, stmt := range node.Body {
 		if result := e.Evaluate(stmt); result != nil {
 			if err, ok := result.(error); ok {
-				return err
+				return WrapErrorWithContext(err, stmt.GetPosition(), stmt, e.ctx)
 			}
 			if signal, ok := isControlSignal(result); ok {
 				return signal
@@ -565,7 +570,7 @@ func (e *Evaluator) visitInclude(node *nodes.Include) interface{} {
 		}
 
 		if renderErr := e.renderIncludedTemplate(tmpl, node.WithContext); renderErr != nil {
-			return renderErr
+			return WrapErrorWithContext(renderErr, node.GetPosition(), node, e.ctx)
 		}
 
 		return nil
@@ -2043,10 +2048,14 @@ func (e *Evaluator) visitAwait(node *nodes.Await) interface{} {
 	value := e.Evaluate(node.Node)
 	e.suspendAwait = previous
 	if err, ok := value.(error); ok {
-		return err
+		return WrapErrorWithContext(err, node.GetPosition(), node, e.ctx)
 	}
 
-	return e.resolveAwaitable(value, node, true)
+	resolved := e.resolveAwaitable(value, node, true)
+	if err, ok := resolved.(error); ok {
+		return WrapErrorWithContext(err, node.GetPosition(), node, e.ctx)
+	}
+	return resolved
 }
 
 func (e *Evaluator) shouldAutoAwait() bool {
@@ -2813,6 +2822,11 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 
 	switch fn := callable.(type) {
 	case *Macro:
+		if e.ctx != nil {
+			frame := buildTraceFrame(e.ctx, node, fmt.Sprintf("macro %s", fn.Name))
+			e.ctx.PushTrace(frame)
+			defer e.ctx.PopTrace()
+		}
 		callerValue, hasCaller := kwargs["__caller"]
 		if hasCaller {
 			delete(kwargs, "__caller")
@@ -2823,7 +2837,8 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 		result, err := fn.Execute(e.ctx, args, kwargs)
 		fn.callerFunc = nil
 		if err != nil {
-			return NewMacroError(fn.Name, err.Error(), pos, fn)
+			wrapped := NewMacroError(fn.Name, err.Error(), pos, fn)
+			return WrapErrorWithContext(wrapped, pos, node, e.ctx)
 		}
 		return autoResult(result)
 	case *MacroNamespace:
@@ -2833,14 +2848,14 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(e.ctx, callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
+			return WrapErrorWithContext(NewError(ErrorTypeTemplate, err.Error(), pos, node), pos, node, e.ctx)
 		}
 		return autoResult(result)
 	case func(*Context, ...interface{}) (interface{}, error):
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(e.ctx, callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
+			return WrapErrorWithContext(NewError(ErrorTypeTemplate, err.Error(), pos, node), pos, node, e.ctx)
 		}
 		return autoResult(result)
 	case func(*Context, ...interface{}) interface{}:
@@ -2850,7 +2865,7 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 		callArgs := appendCallArgs(args, kwargs)
 		result, err := fn(callArgs...)
 		if err != nil {
-			return NewError(ErrorTypeTemplate, err.Error(), pos, node)
+			return WrapErrorWithContext(NewError(ErrorTypeTemplate, err.Error(), pos, node), pos, node, e.ctx)
 		}
 		return autoResult(result)
 	case func(...interface{}) interface{}:
@@ -2941,7 +2956,7 @@ func (e *Evaluator) callFunction(callable interface{}, args []interface{}, kwarg
 			}
 			return autoResult(result)
 		}
-		return NewError(ErrorTypeTemplate, fmt.Sprintf("'%T' object is not callable", callable), pos, node)
+		return WrapErrorWithContext(NewError(ErrorTypeTemplate, fmt.Sprintf("'%T' object is not callable", callable), pos, node), pos, node, e.ctx)
 	}
 }
 

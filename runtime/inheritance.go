@@ -185,7 +185,7 @@ func CreateSuperFunction(ctx *Context, inheritanceCtx *InheritanceContext) Globa
 		evaluator := NewEvaluator(ctx)
 		result := evaluator.Evaluate(parentBlock)
 		if err, ok := result.(error); ok {
-			return "", err
+			return "", WrapErrorWithContext(err, parentBlock.GetPosition(), parentBlock, ctx)
 		}
 
 		return Markup(buf.String()), nil

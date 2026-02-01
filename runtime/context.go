@@ -197,6 +197,9 @@ type Context struct {
 
 	// Concurrency safety
 	mu sync.RWMutex
+
+	// Error tracing
+	trace []TraceFrame
 }
 
 // NewContext creates a new context with the given variables
@@ -208,6 +211,7 @@ func NewContext(vars map[string]interface{}) *Context {
 		macroStack:  make([]*Macro, 0),
 		callerStack: make([]*MacroCaller, 0),
 		errors:      make([]error, 0),
+		trace:       make([]TraceFrame, 0),
 	}
 
 	// Set initial variables
@@ -218,6 +222,34 @@ func NewContext(vars map[string]interface{}) *Context {
 	}
 
 	return ctx
+}
+
+// PushTrace appends a trace frame to the context trace stack.
+func (ctx *Context) PushTrace(frame TraceFrame) {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	ctx.trace = append(ctx.trace, frame)
+}
+
+// PopTrace removes the most recent trace frame.
+func (ctx *Context) PopTrace() {
+	ctx.mu.Lock()
+	defer ctx.mu.Unlock()
+	if len(ctx.trace) > 0 {
+		ctx.trace = ctx.trace[:len(ctx.trace)-1]
+	}
+}
+
+// TraceSnapshot returns a copy of the current trace stack.
+func (ctx *Context) TraceSnapshot() []TraceFrame {
+	ctx.mu.RLock()
+	defer ctx.mu.RUnlock()
+	if len(ctx.trace) == 0 {
+		return nil
+	}
+	trace := make([]TraceFrame, len(ctx.trace))
+	copy(trace, ctx.trace)
+	return trace
 }
 
 // NewContextWithEnvironment creates a new context with an environment

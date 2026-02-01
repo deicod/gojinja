@@ -16,7 +16,7 @@
 - Tuple/list/dict literals, macro calls, positional/keyword argument binding, unpacking assignment targets, and namespace references mirror Python Jinja behaviour (`parser/expressions.go`, `runtime/evaluator.go`).
 - Helper expressions for inspecting runtime state are provided via the builtin `environment()` and `context()` globals, returning the active environment and a snapshot of the scope (`runtime/environment.go`, `runtime/context.go`).
 
-**Remaining gaps**: async/await expressions are still missing.
+Async/await expressions are supported via the `await` unary operator when `enable_async` is enabled (`parser/expressions.go`, `runtime/evaluator.go`).
 
 ## Built-in Filters
 
@@ -47,11 +47,11 @@
 - File system and map loaders honour multi-path search order, provide `TemplateModTime`, and surface `TemplateNotFound` with tried paths (`runtime/environment.go`).
 - Template caching, macro registries, extension registration, autoescape selection, and sandbox-aware execution line up with Python's API surface (`runtime/environment.go`, `runtime/template.go`, `runtime/sandbox.go`).
 
-**Remaining gaps**: streaming writers and async rendering modes are not yet implemented.
+Streaming renderers are available via `Template.Generate` and the helper functions in `runtime/api.go`, including writer-targeted variants that honour trailing newline policy (`runtime/stream.go`, `runtime/template.go`).
 
 ## Error Handling & Security
 
 - Runtime errors capture positions and wrap underlying causes, and dedicated `TemplateNotFoundError` / `TemplatesNotFoundError` types align with Jinja expectations (`runtime/errors.go`).
 - Security policy builders now include explicit test allow/block controls, and sandbox execution enforces filter/test/global access alongside resource limits (`runtime/policy.go`, `runtime/security.go`, `runtime/evaluator.go`).
 
-**Remaining gaps**: richer stack traces for parity with Python's error diagnostics.
+Error reporting now includes template traceback frames (template name/line/column and macro context), matching Python-style diagnostics (`runtime/errors.go`, `runtime/context.go`, `runtime/evaluator.go`).
